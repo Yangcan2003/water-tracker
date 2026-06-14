@@ -171,19 +171,21 @@ elements.historyList.addEventListener("click", (event) => {
 
 async function initialize() {
   try {
-    const response = await fetch("/api/config", { cache: "no-store" });
-    if (!response.ok) throw new Error("无法读取 Cloudflare 环境配置");
-    const firebaseConfig = await response.json();
-    if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-      throw new Error("尚未配置 Firebase 环境变量");
-    }
+    const firebaseConfig = {
+      apiKey: "AIzaSyBkOLTe2i-uBAea4TD_nMYvIQuXkBw2LOE",
+      authDomain: "water-e08be.firebaseapp.com",
+      projectId: "water-e08be",
+      storageBucket: "water-e08be.firebasestorage.app",
+      messagingSenderId: "176629809438",
+      appId: "1:176629809438:web:475d4b652c6a2b607d090f",
+    };
 
     const firebaseApp = initializeApp(firebaseConfig);
     auth = getAuth(firebaseApp);
     db = getFirestore(firebaseApp);
     onAuthStateChanged(auth, applyUser);
   } catch (error) {
-    showAuthMessage(`${error.message}。请先按 README.md 完成部署配置。`);
+    showAuthMessage(`初始化失败：${error.message}`);
     elements.authSubmit.disabled = true;
   }
 }
