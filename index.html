@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#e8f5f1" />
+    <title>今天喝水了吗</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="auth-shell" id="authShell">
+      <div class="auth-brand">
+        <span class="brand-drop" aria-hidden="true">●</span>
+        <p class="eyebrow">DAILY HYDRATION</p>
+        <h1>喝水这件小事，<br />每天都算数。</h1>
+        <p class="auth-intro">登录后，你的饮水目标和每日记录会安全地同步到云端。</p>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist" aria-label="账户操作">
+          <button class="active" id="loginTab" type="button" role="tab">登录</button>
+          <button id="registerTab" type="button" role="tab">注册</button>
+        </div>
+        <form id="authForm">
+          <div>
+            <p class="eyebrow" id="authEyebrow">WELCOME BACK</p>
+            <h2 id="authTitle">登录你的账户</h2>
+          </div>
+          <label for="emailInput">邮箱</label>
+          <input class="text-field" id="emailInput" type="email" autocomplete="email" placeholder="name@example.com" required />
+          <label for="passwordInput">密码</label>
+          <input class="text-field" id="passwordInput" type="password" minlength="6" autocomplete="current-password" placeholder="至少 6 位" required />
+          <p class="form-message" id="authMessage" role="status"></p>
+          <button class="primary-button" id="authSubmit" type="submit">登录</button>
+        </form>
+        <p class="cloud-note">由 Cloudflare Pages 提供访问 · Firebase 认证与存储</p>
+      </div>
+    </section>
+
+    <main class="app-shell" id="appShell" hidden>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">DAILY HYDRATION</p>
+          <h1>今天喝水了吗？</h1>
+        </div>
+        <div class="account-actions">
+          <span class="user-email" id="userEmail"></span>
+          <button class="logout-button" id="logoutButton" type="button">退出</button>
+          <button class="icon-button" id="goalButton" type="button" aria-label="设置每日目标">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.42 1.42-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2v-.09A1.7 1.7 0 0 0 12.35 18a1.7 1.7 0 0 0-1.88.34l-.06.06L9 16.98l.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.03H7.5v-2h.34A1.7 1.7 0 0 0 9.4 10.94a1.7 1.7 0 0 0-.34-1.88L9 9l1.42-1.42.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V6h2v.42a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.78 9l-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H21v2h-.06A1.7 1.7 0 0 0 19.4 15Z"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="date-row" aria-label="日期选择">
+        <button class="date-arrow" id="previousDay" type="button" aria-label="前一天">‹</button>
+        <button class="date-display" id="datePickerButton" type="button">
+          <strong id="dateLabel">今天</strong>
+          <span id="fullDate"></span>
+        </button>
+        <input id="datePicker" class="visually-hidden" type="date" />
+        <button class="date-arrow" id="nextDay" type="button" aria-label="后一天">›</button>
+      </section>
+
+      <section class="progress-card">
+        <div class="progress-copy">
+          <div class="amount-line">
+            <strong id="currentAmount">0</strong>
+            <span>ml</span>
+          </div>
+          <p>目标 <span id="goalAmount">2000</span> ml</p>
+        </div>
+
+        <div class="water-visual" aria-hidden="true">
+          <svg class="drop" viewBox="0 0 160 190">
+            <defs>
+              <clipPath id="dropClip">
+                <path d="M80 8C62 39 24 76 24 119a56 56 0 0 0 112 0C136 76 98 39 80 8Z"></path>
+              </clipPath>
+              <linearGradient id="waterGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#56cbb8"></stop>
+                <stop offset="100%" stop-color="#168d84"></stop>
+              </linearGradient>
+            </defs>
+            <path class="drop-shell" d="M80 8C62 39 24 76 24 119a56 56 0 0 0 112 0C136 76 98 39 80 8Z"></path>
+            <g clip-path="url(#dropClip)">
+              <rect id="waterFill" x="0" y="190" width="160" height="190" fill="url(#waterGradient)"></rect>
+              <path id="waterWave" d="M-10 0 Q20 -8 50 0 T110 0 T170 0 V200 H-10Z" fill="#56cbb8"></path>
+            </g>
+            <path class="drop-shine" d="M53 67c-10 15-18 31-18 48"></path>
+          </svg>
+          <span id="progressPercent">0%</span>
+        </div>
+
+        <div class="progress-footer">
+          <div class="progress-track">
+            <span id="progressBar"></span>
+          </div>
+          <p id="progressMessage">喝下第一杯水，开启清爽的一天</p>
+        </div>
+      </section>
+
+      <section class="quick-add">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">QUICK ADD</p>
+            <h2>喝了什么？</h2>
+          </div>
+          <button class="text-button" id="customButton" type="button">+ 自定义</button>
+        </div>
+
+        <div class="source-grid">
+          <button class="source-card cup-card" type="button" data-amount="490" data-source="490ml 杯装水">
+            <span class="source-icon glass-icon" aria-hidden="true">
+              <span class="glass-water"></span>
+            </span>
+            <span class="source-name">我的水杯</span>
+            <strong>490 ml</strong>
+            <span class="add-mark">+</span>
+          </button>
+
+          <button class="source-card bottle-card natural" type="button" data-amount="550" data-source="农夫山泉饮用天然水">
+            <span class="source-icon bottle-icon" aria-hidden="true">
+              <span class="bottle-cap"></span>
+              <span class="bottle-label">天然水</span>
+            </span>
+            <span class="source-name">农夫山泉</span>
+            <strong>天然水 · 550 ml</strong>
+            <span class="add-mark">+</span>
+          </button>
+
+          <button class="source-card bottle-card purified" type="button" data-amount="550" data-source="农夫山泉饮用纯净水">
+            <span class="source-icon bottle-icon" aria-hidden="true">
+              <span class="bottle-cap"></span>
+              <span class="bottle-label">纯净水</span>
+            </span>
+            <span class="source-name">农夫山泉</span>
+            <strong>纯净水 · 550 ml</strong>
+            <span class="add-mark">+</span>
+          </button>
+        </div>
+
+        <p class="cup-hint" id="cupHint">按平时 2～3 杯计算，水杯可贡献 980～1470 ml</p>
+      </section>
+
+      <section class="history-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">TODAY'S LOG</p>
+            <h2>饮水记录</h2>
+          </div>
+          <span class="record-count" id="recordCount">0 条</span>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+    </main>
+
+    <dialog id="goalDialog">
+      <form method="dialog" id="goalForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">DAILY GOAL</p>
+            <h2>设置每日目标</h2>
+          </div>
+          <button class="close-button" value="cancel" type="submit" aria-label="关闭">×</button>
+        </div>
+        <label for="goalInput">目标饮水量</label>
+        <div class="number-field">
+          <input id="goalInput" type="number" min="500" max="10000" step="50" required />
+          <span>ml</span>
+        </div>
+        <div class="preset-row">
+          <button type="button" data-goal="1500">1500</button>
+          <button type="button" data-goal="2000">2000</button>
+          <button type="button" data-goal="2500">2500</button>
+          <button type="button" data-goal="3000">3000</button>
+        </div>
+        <button class="primary-button" value="default" type="submit">保存目标</button>
+      </form>
+    </dialog>
+
+    <dialog id="customDialog">
+      <form method="dialog" id="customForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">CUSTOM WATER</p>
+            <h2>自定义饮水量</h2>
+          </div>
+          <button class="close-button" value="cancel" type="submit" aria-label="关闭">×</button>
+        </div>
+        <label for="customName">名称</label>
+        <input class="text-field" id="customName" type="text" maxlength="30" value="其他饮水" required />
+        <label for="customAmount">饮水量</label>
+        <div class="number-field">
+          <input id="customAmount" type="number" min="1" max="5000" step="10" value="300" required />
+          <span>ml</span>
+        </div>
+        <button class="primary-button" value="default" type="submit">添加记录</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <span id="toastText"></span>
+      <button id="undoButton" type="button">撤销</button>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
