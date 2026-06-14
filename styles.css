@@ -859,6 +859,33 @@ dialog label {
     grid-row: 1 / 3;
   }
 
+  .supplement-stats {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 14px 8px;
+  }
+
+  .stat-card strong {
+    font-size: 24px;
+  }
+
+  .supplement-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .supplement-card {
+    min-height: 120px;
+    padding: 16px 12px 14px;
+  }
+
+  .supplement-emoji {
+    font-size: 28px;
+  }
+
   .history-item {
     grid-template-columns: 40px 1fr auto;
   }
@@ -885,6 +912,378 @@ dialog label {
   .progress-footer {
     margin-top: 35px;
   }
+}
+
+/* ---- 标签页导航 ---- */
+.tab-nav {
+  display: flex;
+  gap: 5px;
+  margin: 22px 0 6px;
+  padding: 5px;
+  border-radius: 13px;
+  background: var(--mint-100);
+}
+
+.tab-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.tab-button.active {
+  background: white;
+  color: var(--mint-700);
+  box-shadow: 0 5px 15px rgba(25, 92, 83, 0.08);
+}
+
+.tab-icon {
+  font-size: 16px;
+}
+
+.tab-panel[hidden] {
+  display: none !important;
+}
+
+/* ---- 补剂统计卡片 ---- */
+.supplement-summary {
+  margin-bottom: 20px;
+}
+
+.supplement-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 8px 24px rgba(27, 78, 71, 0.05);
+}
+
+.stat-card strong {
+  font-family: "Arial Rounded MT Bold", "Microsoft YaHei UI", sans-serif;
+  font-size: 32px;
+  color: var(--mint-700);
+  letter-spacing: -0.04em;
+}
+
+.medicine-stat strong {
+  color: #1a8a65;
+}
+
+.stat-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---- 补剂卡片网格 ---- */
+.supplement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-top: 19px;
+}
+
+.supplement-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 140px;
+  padding: 22px 18px 18px;
+  border: 2px solid rgba(23, 61, 58, 0.06);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10px 30px rgba(27, 78, 71, 0.06);
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.supplement-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 38px rgba(27, 78, 71, 0.11);
+}
+
+.supplement-card:active {
+  transform: scale(0.97);
+}
+
+.supplement-card.taken {
+  border-color: var(--mint-400);
+  background: linear-gradient(145deg, rgba(241, 248, 245, 0.9), rgba(201, 228, 219, 0.55));
+  box-shadow: 0 10px 30px rgba(22, 141, 132, 0.12);
+}
+
+/* 药物卡片——翠绿色调，与补剂薄荷绿区分 */
+.medicine-card.taken {
+  border-color: #4caf92;
+  background: linear-gradient(145deg, rgba(232, 246, 238, 0.92), rgba(183, 224, 205, 0.58));
+  box-shadow: 0 10px 30px rgba(16, 128, 97, 0.13);
+}
+
+.supplement-emoji {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.supplement-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.supplement-dosage {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.supplement-check {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mint-100);
+  color: var(--mint-600);
+  font-size: 16px;
+  font-weight: 800;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ---- 健身日开关 ---- */
+.workout-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.workout-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 2px solid #e0e0e0;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.workout-toggle.active {
+  border-color: #f59e0b;
+  background: #fffbf0;
+  color: #b45309;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.15);
+}
+
+.workout-icon { font-size: 18px; }
+
+.workout-indicator {
+  display: grid;
+  width: 22px; height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e0e0e0;
+  color: white;
+  font-size: 12px;
+  font-weight: 800;
+  transition: background 0.2s;
+}
+
+.workout-toggle.active .workout-indicator {
+  background: #f59e0b;
+}
+
+/* ---- 跳过卡片 ---- */
+.supplement-card.skipped {
+  opacity: 0.45;
+  pointer-events: auto;
+  cursor: default;
+  border-style: dashed;
+}
+
+.supplement-card.skipped:hover {
+  transform: none;
+  box-shadow: 0 10px 30px rgba(27, 78, 71, 0.06);
+}
+
+.skip-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: #f0f0f0;
+  color: #999;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ---- 计数圆点 ---- */
+.count-dots {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.count-dot {
+  font-size: 11px;
+  color: #c9d5d2;
+  transition: color 0.2s;
+}
+
+.count-dot.filled {
+  color: var(--mint-600);
+}
+
+.medicine-card .count-dot.filled {
+  color: #1a8a65;
+}
+
+/* ---- 计数控制按钮 ---- */
+.count-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.count-minus,
+.count-reset {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mint-100);
+  color: var(--mint-700);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+  z-index: 2;
+}
+
+.count-minus:hover,
+.count-reset:hover {
+  background: var(--mint-200);
+}
+
+.count-reset {
+  font-size: 13px;
+}
+
+.medicine-card .count-minus,
+.medicine-card .count-reset {
+  background: #e2f3ec;
+  color: #1a8a65;
+}
+
+.medicine-card .count-minus:hover,
+.medicine-card .count-reset:hover {
+  background: #c8e8d8;
+}
+
+/* ---- 历史 partial 状态 ---- */
+.supplement-dot.partial {
+  background: #fff8e8;
+  color: #b8952e;
+}
+
+.supplement-status.partial {
+  background: #fff8e8;
+  color: #8a7020;
+}
+
+/* 编辑图标 */
+.card-edit-icon {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  color: #b0bfbc;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  z-index: 2;
+}
+
+.card-edit-icon:hover {
+  background: rgba(23, 61, 58, 0.06);
+  color: var(--mint-700);
+}
+
+.supplement-card.taken .supplement-check {
+  background: var(--mint-600);
+  color: white;
+}
+
+.medicine-card.taken .supplement-check {
+  background: #1a8a65;
+  color: white;
+}
+
+/* ---- 补剂历史列表 ---- */
+.supplement-dot {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.supplement-dot.taken {
+  background: #e3f7f0;
+  color: var(--mint-600);
+}
+
+.supplement-dot.missed {
+  background: #fff0ef;
+  color: var(--red);
+}
+
+.supplement-status {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 99px;
+}
+
+.supplement-status.taken {
+  background: #e3f7f0;
+  color: var(--mint-700);
+}
+
+.supplement-status.missed {
+  background: #fff0ef;
+  color: var(--red);
 }
 
 @media (prefers-reduced-motion: reduce) {

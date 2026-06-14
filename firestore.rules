@@ -11,6 +11,21 @@ service cloud.firestore {
         allow read, create, update, delete: if request.auth != null
           && request.auth.uid == userId;
       }
+
+      match /supplementLogs/{logId} {
+        allow read, create, update, delete: if request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      match /medicineLogs/{logId} {
+        allow read, create, update, delete: if request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      match /workoutLogs/{dateKey} {
+        allow read, create, update, delete: if request.auth != null
+          && request.auth.uid == userId;
+      }
     }
   }
 }
