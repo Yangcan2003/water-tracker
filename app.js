@@ -48,8 +48,9 @@ function $(sel) { return document.querySelector(sel); }
   "goalButton","goalDialog","goalForm","goalInput",
   "customButton","customDialog","customForm","customName","customAmount",
   "toast","toastText","undoButton",
-  "waterTab","medicineTab","supplementTab","overviewTab",
-  "waterPanel","medicinePanel","supplementPanel","overviewPanel","overviewCards",
+  "waterTab","medicineTab","supplementTab",
+  "waterPanel","medicinePanel","supplementPanel",
+  "historyButton","historyDialog","historyContent",
   // 药物
   "medicineGrid","medicineTakenCount","medicineTotalCount","medicinePercent",
   "medicineRecordCount","medicineHistoryList","medicineHint",
@@ -75,6 +76,7 @@ E.loginTab.addEventListener("click", () => setAuthMode("login"));
 E.registerTab.addEventListener("click", () => setAuthMode("register"));
 E.authForm.addEventListener("submit", handleAuthSubmit);
 E.logoutButton.addEventListener("click", () => auth && signOut(auth));
+E.historyButton.addEventListener("click", () => { loadHistory(); E.historyDialog.showModal(); });
 E.goalButton.addEventListener("click", () => { E.goalInput.value = dailyGoal; E.goalDialog.showModal(); setTimeout(() => E.goalInput.select(), 50); });
 E.goalForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -113,7 +115,7 @@ E.historyList.addEventListener("click", (event) => {
 });
 
 // 对话框点击外部关闭
-[E.goalDialog, E.customDialog, E.customSupplementDialog, E.customMedicineDialog].forEach(dlg => {
+[E.goalDialog, E.customDialog, E.customSupplementDialog, E.customMedicineDialog, E.historyDialog].forEach(dlg => {
   dlg.addEventListener("click", (event) => {
     const b = dlg.getBoundingClientRect();
     if (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom) dlg.close();
@@ -124,7 +126,6 @@ E.historyList.addEventListener("click", (event) => {
 E.waterTab.addEventListener("click", () => switchTab("water"));
 E.medicineTab.addEventListener("click", () => switchTab("medicine"));
 E.supplementTab.addEventListener("click", () => switchTab("supplement"));
-E.overviewTab.addEventListener("click", () => switchTab("overview"));
 
 // 健身日开关
 E.medicineWorkoutToggle.addEventListener("click", () => toggleWorkoutDay());
@@ -223,7 +224,6 @@ function switchTab(tab) {
     { id: "water", button: E.waterTab, panel: E.waterPanel, title: "今天喝水了吗？" },
     { id: "medicine", button: E.medicineTab, panel: E.medicinePanel, title: "今天吃药了吗？" },
     { id: "supplement", button: E.supplementTab, panel: E.supplementPanel, title: "今天吃补剂了吗？" },
-    { id: "overview", button: E.overviewTab, panel: E.overviewPanel, title: "今日概览" },
   ];
   tabs.forEach(t => {
     const active = t.id === tab;
@@ -234,7 +234,6 @@ function switchTab(tab) {
   });
   E.goalButton.hidden = tab !== "water";
   if (tab === "water") render();
-  else if (tab === "overview") renderOverview();
   else renderItemList(tab);
 }
 
@@ -701,67 +700,109 @@ function renderItemList(type) {
   }
 }
 
-// ========== 概览渲染 ==========
-function renderOverview() {
-  const waterTotal = records.reduce((s, r) => s + Number(r.amount), 0);
-  const waterPct = dailyGoal > 0 ? Math.min(Math.round((waterTotal / dailyGoal) * 100), 100) : 0;
+// ========== 历史记录弹窗 ==========
+async function loadHistory() {
+  if (!currentUser) return;
+  E.historyContent.innerHTML = '<div class="empty-state">正在加载历史记录...</div>';
 
-  // 药物
-  const medFull = getFullList("medicine");
-  const medActive = medFull.filter(s => isItemActiveToday("medicine", s));
-  const medDone = medActive.filter(s => getCount("medicine", s.name) >= (s.targetCount || 1)).length;
-
-  // 补剂
-  const supFull = getFullList("supplement");
-  const supActive = supFull.filter(s => isItemActiveToday("supplement", s));
-  const supDone = supActive.filter(s => getCount("supplement", s.name) >= (s.targetCount || 1)).length;
-
-  const weekdayLabel = isWeekday(selectedDate) ? "工作日" : "周末";
-  const gymLabel = isWorkoutDay ? " · 健身日" : "";
-
-  function renderOverviewSection(icon, title, total, done, items, activeList, type) {
-    const pct = activeList.length > 0 ? Math.round((done / activeList.length) * 100) : 0;
-    let itemsHtml = "";
-    if (type === "water") {
-      itemsHtml = `<div class="ov-water-bar">
-        <div class="ov-water-fill" style="width:${Math.min((waterTotal/dailyGoal)*100,100)}%"></div>
-        <span>${waterTotal} / ${dailyGoal} ml (${waterPct}%)</span>
-      </div>`;
-    } else {
-      itemsHtml = items.map(item => {
-        const active = isItemActiveToday(type, item);
-        const cnt = getCount(type, item.name);
-        const tgt = item.targetCount || 1;
-        const done = cnt >= tgt;
-        const reason = active ? "" : getSkipReason(type, item);
-        let icon2, cls;
-        if (!active) { icon2 = "—"; cls = "skipped"; }
-        else if (done) { icon2 = "✓"; cls = "taken"; }
-        else if (cnt > 0) { icon2 = "◐"; cls = "partial"; }
-        else { icon2 = "✗"; cls = "missed"; }
-        const label = active ? `${cnt}/${tgt}` : reason;
-        return `<span class="ov-item ${cls}" title="${esc(item.name)}: ${label}">
-          <span class="ov-item-emoji">${item.emoji||"💊"}</span>
-          <span class="ov-item-name">${esc(item.name)}</span>
-          <span class="ov-item-status">${icon2} ${label}</span>
-        </span>`;
-      }).join("");
+  try {
+    // 生成近14天日期列表
+    const dates = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(toDateKey(d));
     }
-    return `<div class="ov-card">
-      <div class="ov-card-head">
-        <span>${icon}</span>
-        <strong>${title}</strong>
-        <span class="ov-card-pct">${type === "water" ? waterPct : pct}%</span>
-      </div>
-      <div class="ov-card-body">${itemsHtml}</div>
-      <div class="ov-card-foot">${done}/${activeList.length} 完成${type !== "water" ? ` · ${weekdayLabel}${gymLabel}` : ""}</div>
-    </div>`;
-  }
 
-  E.overviewCards.innerHTML =
-    renderOverviewSection("💧", "饮水", waterTotal, 0, [], [], "water") +
-    renderOverviewSection("💚", "药物", 0, medDone, medFull, medActive, "medicine") +
-    renderOverviewSection("💊", "补剂", 0, supDone, supFull, supActive, "supplement");
+    // 并行查询所有天的饮水、药物、补剂 + 健身日
+    const allQueries = dates.flatMap(dk => [
+      getDocs(query(collection(db, "users", currentUser.uid, "waterLogs"), where("logDate", "==", dk))),
+      getDocs(query(collection(db, "users", currentUser.uid, "medicineLogs"), where("logDate", "==", dk))),
+      getDocs(query(collection(db, "users", currentUser.uid, "supplementLogs"), where("logDate", "==", dk))),
+      getDoc(doc(db, "users", currentUser.uid, "workoutLogs", dk)),
+    ]);
+
+    const results = await Promise.all(allQueries);
+
+    // 解析结果
+    const dayData = dates.map((dk, i) => {
+      const offset = i * 4;
+      const waterSnap = results[offset];
+      const medSnap = results[offset + 1];
+      const suppSnap = results[offset + 2];
+      const workoutSnap = results[offset + 3];
+
+      const waterTotal = waterSnap.docs.reduce((s, doc) => s + (doc.data().amount || 0), 0);
+      const medRecs = medSnap.docs.map(d => ({ ...d.data(), count: d.data().count ?? (d.data().taken ? 1 : 0) }));
+      const suppRecs = suppSnap.docs.map(d => ({ ...d.data(), count: d.data().count ?? (d.data().taken ? 1 : 0) }));
+      const isWorkout = workoutSnap.exists() && workoutSnap.data().isWorkout === true;
+
+      return { dateKey: dk, waterTotal, medRecs, suppRecs, isWorkout };
+    });
+
+    // 渲染
+    const now = new Date();
+    E.historyContent.innerHTML = dayData.map(day => {
+      const d = fromDateKey(day.dateKey);
+      const isToday = day.dateKey === toDateKey(now);
+      const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+      const isYesterday = day.dateKey === toDateKey(yesterday);
+      let dateLabel;
+      if (isToday) dateLabel = "今天";
+      else if (isYesterday) dateLabel = "昨天";
+      else dateLabel = d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+      const fullDate = d.toLocaleDateString("zh-CN", { weekday: "short", month: "short", day: "numeric" });
+      const isWeekday = d.getDay() >= 1 && d.getDay() <= 5;
+
+      // 饮水
+      const waterPct = dailyGoal > 0 ? Math.min(Math.round((day.waterTotal / dailyGoal) * 100), 100) : 0;
+      const waterBar = `<div class="hist-bar"><div class="hist-fill" style="width:${waterPct}%"></div></div>`;
+
+      // 药物
+      const medItems = getFullList("medicine").map(item => {
+        const rec = day.medRecs.find(r => r.name === item.name);
+        const cnt = rec ? rec.count : 0;
+        const tgt = item.targetCount || 1;
+        const sch = item.schedule || "everyday";
+        const active = sch === "everyday" || (sch === "weekday" && isWeekday) || (sch === "workout" && isWeekday && day.isWorkout);
+        if (!active) return `<span class="hist-dot gray" title="${item.name}: 跳过">—</span>`;
+        if (cnt >= tgt) return `<span class="hist-dot green" title="${item.name}: ✓ ${cnt}/${tgt}">✓</span>`;
+        if (cnt > 0) return `<span class="hist-dot yellow" title="${item.name}: ${cnt}/${tgt}">◐</span>`;
+        return `<span class="hist-dot red" title="${item.name}: 未服">✗</span>`;
+      }).join("");
+
+      // 补剂
+      const suppItems = getFullList("supplement").map(item => {
+        const rec = day.suppRecs.find(r => r.name === item.name);
+        const cnt = rec ? rec.count : 0;
+        const tgt = item.targetCount || 1;
+        const sch = item.schedule || "everyday";
+        const active = sch === "everyday" || (sch === "weekday" && isWeekday) || (sch === "workout" && isWeekday && day.isWorkout);
+        if (!active) return `<span class="hist-dot gray" title="${item.name}: 跳过">—</span>`;
+        if (cnt >= tgt) return `<span class="hist-dot green" title="${item.name}: ✓ ${cnt}/${tgt}">✓</span>`;
+        if (cnt > 0) return `<span class="hist-dot yellow" title="${item.name}: ${cnt}/${tgt}">◐</span>`;
+        return `<span class="hist-dot red" title="${item.name}: 未服">✗</span>`;
+      }).join("");
+
+      return `<div class="hist-row">
+        <div class="hist-date">
+          <strong>${dateLabel}</strong>
+          <span>${fullDate}${day.isWorkout ? " 🏋️" : ""}</span>
+        </div>
+        <div class="hist-col">
+          <span class="hist-label">💧</span>
+          <span class="hist-val">${day.waterTotal}ml</span>
+          ${waterBar}
+          <span class="hist-pct">${waterPct}%</span>
+        </div>
+        <div class="hist-col"><span class="hist-label">💚</span>${medItems || '<span class="hist-empty">—</span>'}</div>
+        <div class="hist-col"><span class="hist-label">💊</span>${suppItems || '<span class="hist-empty">—</span>'}</div>
+      </div>`;
+    }).join("");
+
+  } catch (e) {
+    E.historyContent.innerHTML = `<div class="empty-state">加载失败：${toFriendlyError(e)}</div>`;
+  }
 }
 
 // ========== 工具 ==========

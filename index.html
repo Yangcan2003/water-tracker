@@ -46,6 +46,7 @@
         <div class="account-actions">
           <span class="user-email" id="userEmail"></span>
           <button class="logout-button" id="logoutButton" type="button">退出</button>
+          <button class="logout-button" id="historyButton" type="button" style="background:rgba(255,255,255,0.7);">📜 历史</button>
           <button class="icon-button" id="goalButton" type="button" aria-label="设置每日目标">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path>
@@ -64,9 +65,6 @@
         </button>
         <button class="tab-button" id="supplementTab" type="button" role="tab" aria-selected="false">
           <span class="tab-icon">💊</span> 补剂
-        </button>
-        <button class="tab-button" id="overviewTab" type="button" role="tab" aria-selected="false">
-          <span class="tab-icon">📋</span> 概览
         </button>
       </nav>
 
@@ -283,12 +281,6 @@
         </section>
       </div>
 
-      <!-- ========== 概览页面 ========== -->
-      <div class="tab-panel" id="overviewPanel" hidden>
-        <section class="overview-cards" id="overviewCards">
-          <!-- 动态渲染三栏概览 -->
-        </section>
-      </div>
     </main>
 
     <dialog id="goalDialog">
@@ -401,6 +393,19 @@
         </select>
         <button class="primary-button" value="default" type="submit">添加药物</button>
       </form>
+    </dialog>
+
+    <dialog id="historyDialog">
+      <div class="dialog-heading" style="padding:28px 28px 0">
+        <div>
+          <p class="eyebrow">HISTORY</p>
+          <h2>近14天记录</h2>
+        </div>
+        <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+      </div>
+      <div id="historyContent" style="padding:0 28px 28px;max-height:60vh;overflow-y:auto">
+        <div class="empty-state">正在加载历史记录...</div>
+      </div>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite">
