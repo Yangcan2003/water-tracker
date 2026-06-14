@@ -4,16 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#e8f5f1" />
-    <title>今天喝水了吗</title>
+    <title>每日健康追踪</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
       <div class="auth-brand">
         <span class="brand-drop" aria-hidden="true">●</span>
-        <p class="eyebrow">DAILY HYDRATION</p>
-        <h1>喝水这件小事，<br />每天都算数。</h1>
-        <p class="auth-intro">登录后，你的饮水目标和每日记录会安全地同步到云端。</p>
+        <p class="eyebrow">DAILY HEALTH TRACKER</p>
+        <h1>健康这件小事，<br />每天都算数。</h1>
+        <p class="auth-intro">登录后，你的饮水、药物、补剂和每日记录会安全地同步到云端。</p>
       </div>
 
       <div class="auth-card">
@@ -40,7 +40,7 @@
     <main class="app-shell" id="appShell" hidden>
       <header class="topbar">
         <div>
-          <p class="eyebrow">DAILY HYDRATION</p>
+          <p class="eyebrow">DAILY TRACKER</p>
           <h1>今天喝水了吗？</h1>
         </div>
         <div class="account-actions">
@@ -55,6 +55,18 @@
         </div>
       </header>
 
+      <nav class="tab-nav" role="tablist" aria-label="记录类型">
+        <button class="tab-button active" id="waterTab" type="button" role="tab" aria-selected="true">
+          <span class="tab-icon">💧</span> 饮水
+        </button>
+        <button class="tab-button" id="medicineTab" type="button" role="tab" aria-selected="false">
+          <span class="tab-icon">💚</span> 药物
+        </button>
+        <button class="tab-button" id="supplementTab" type="button" role="tab" aria-selected="false">
+          <span class="tab-icon">💊</span> 补剂
+        </button>
+      </nav>
+
       <section class="date-row" aria-label="日期选择">
         <button class="date-arrow" id="previousDay" type="button" aria-label="前一天">‹</button>
         <button class="date-display" id="datePickerButton" type="button">
@@ -65,97 +77,208 @@
         <button class="date-arrow" id="nextDay" type="button" aria-label="后一天">›</button>
       </section>
 
-      <section class="progress-card">
-        <div class="progress-copy">
-          <div class="amount-line">
-            <strong id="currentAmount">0</strong>
-            <span>ml</span>
+      <!-- ========== 饮水页面 ========== -->
+      <div class="tab-panel" id="waterPanel">
+        <section class="progress-card">
+          <div class="progress-copy">
+            <div class="amount-line">
+              <strong id="currentAmount">0</strong>
+              <span>ml</span>
+            </div>
+            <p>目标 <span id="goalAmount">2000</span> ml</p>
           </div>
-          <p>目标 <span id="goalAmount">2000</span> ml</p>
-        </div>
 
-        <div class="water-visual" aria-hidden="true">
-          <svg class="drop" viewBox="0 0 160 190">
-            <defs>
-              <clipPath id="dropClip">
-                <path d="M80 8C62 39 24 76 24 119a56 56 0 0 0 112 0C136 76 98 39 80 8Z"></path>
-              </clipPath>
-              <linearGradient id="waterGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#56cbb8"></stop>
-                <stop offset="100%" stop-color="#168d84"></stop>
-              </linearGradient>
-            </defs>
-            <path class="drop-shell" d="M80 8C62 39 24 76 24 119a56 56 0 0 0 112 0C136 76 98 39 80 8Z"></path>
-            <g clip-path="url(#dropClip)">
-              <rect id="waterFill" x="0" y="190" width="160" height="190" fill="url(#waterGradient)"></rect>
-              <path id="waterWave" d="M-10 0 Q20 -8 50 0 T110 0 T170 0 V200 H-10Z" fill="#56cbb8"></path>
-            </g>
-            <path class="drop-shine" d="M53 67c-10 15-18 31-18 48"></path>
-          </svg>
-          <span id="progressPercent">0%</span>
-        </div>
-
-        <div class="progress-footer">
-          <div class="progress-track">
-            <span id="progressBar"></span>
+          <div class="water-visual" aria-hidden="true">
+            <svg class="drop" viewBox="0 0 160 190">
+              <defs>
+                <clipPath id="dropClip">
+                  <path d="M80 8C62 39 24 76 24 119a56 56 0 0 0 112 0C136 76 98 39 80 8Z"></path>
+                </clipPath>
+                <linearGradient id="waterGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#56cbb8"></stop>
+                  <stop offset="100%" stop-color="#168d84"></stop>
+                </linearGradient>
+              </defs>
+              <path class="drop-shell" d="M80 8C62 39 24 76 24 119a56 56 0 0 0 112 0C136 76 98 39 80 8Z"></path>
+              <g clip-path="url(#dropClip)">
+                <rect id="waterFill" x="0" y="190" width="160" height="190" fill="url(#waterGradient)"></rect>
+                <path id="waterWave" d="M-10 0 Q20 -8 50 0 T110 0 T170 0 V200 H-10Z" fill="#56cbb8"></path>
+              </g>
+              <path class="drop-shine" d="M53 67c-10 15-18 31-18 48"></path>
+            </svg>
+            <span id="progressPercent">0%</span>
           </div>
-          <p id="progressMessage">喝下第一杯水，开启清爽的一天</p>
-        </div>
-      </section>
 
-      <section class="quick-add">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">QUICK ADD</p>
-            <h2>喝了什么？</h2>
+          <div class="progress-footer">
+            <div class="progress-track">
+              <span id="progressBar"></span>
+            </div>
+            <p id="progressMessage">喝下第一杯水，开启清爽的一天</p>
           </div>
-          <button class="text-button" id="customButton" type="button">+ 自定义</button>
-        </div>
+        </section>
 
-        <div class="source-grid">
-          <button class="source-card cup-card" type="button" data-amount="490" data-source="490ml 杯装水">
-            <span class="source-icon glass-icon" aria-hidden="true">
-              <span class="glass-water"></span>
-            </span>
-            <span class="source-name">我的水杯</span>
-            <strong>490 ml</strong>
-            <span class="add-mark">+</span>
-          </button>
-
-          <button class="source-card bottle-card natural" type="button" data-amount="550" data-source="农夫山泉饮用天然水">
-            <span class="source-icon bottle-icon" aria-hidden="true">
-              <span class="bottle-cap"></span>
-              <span class="bottle-label">天然水</span>
-            </span>
-            <span class="source-name">农夫山泉</span>
-            <strong>天然水 · 550 ml</strong>
-            <span class="add-mark">+</span>
-          </button>
-
-          <button class="source-card bottle-card purified" type="button" data-amount="550" data-source="农夫山泉饮用纯净水">
-            <span class="source-icon bottle-icon" aria-hidden="true">
-              <span class="bottle-cap"></span>
-              <span class="bottle-label">纯净水</span>
-            </span>
-            <span class="source-name">农夫山泉</span>
-            <strong>纯净水 · 550 ml</strong>
-            <span class="add-mark">+</span>
-          </button>
-        </div>
-
-        <p class="cup-hint" id="cupHint">按平时 2～3 杯计算，水杯可贡献 980～1470 ml</p>
-      </section>
-
-      <section class="history-section">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">TODAY'S LOG</p>
-            <h2>饮水记录</h2>
+        <section class="quick-add">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">QUICK ADD</p>
+              <h2>喝了什么？</h2>
+            </div>
+            <button class="text-button" id="customButton" type="button">+ 自定义</button>
           </div>
-          <span class="record-count" id="recordCount">0 条</span>
-        </div>
-        <div class="history-list" id="historyList"></div>
-      </section>
+
+          <div class="source-grid">
+            <button class="source-card cup-card" type="button" data-amount="490" data-source="490ml 杯装水">
+              <span class="source-icon glass-icon" aria-hidden="true">
+                <span class="glass-water"></span>
+              </span>
+              <span class="source-name">我的水杯</span>
+              <strong>490 ml</strong>
+              <span class="add-mark">+</span>
+            </button>
+
+            <button class="source-card bottle-card natural" type="button" data-amount="550" data-source="农夫山泉饮用天然水">
+              <span class="source-icon bottle-icon" aria-hidden="true">
+                <span class="bottle-cap"></span>
+                <span class="bottle-label">天然水</span>
+              </span>
+              <span class="source-name">农夫山泉</span>
+              <strong>天然水 · 550 ml</strong>
+              <span class="add-mark">+</span>
+            </button>
+
+            <button class="source-card bottle-card purified" type="button" data-amount="550" data-source="农夫山泉饮用纯净水">
+              <span class="source-icon bottle-icon" aria-hidden="true">
+                <span class="bottle-cap"></span>
+                <span class="bottle-label">纯净水</span>
+              </span>
+              <span class="source-name">农夫山泉</span>
+              <strong>纯净水 · 550 ml</strong>
+              <span class="add-mark">+</span>
+            </button>
+          </div>
+
+          <p class="cup-hint" id="cupHint">按平时 2～3 杯计算，水杯可贡献 980～1470 ml</p>
+        </section>
+
+        <section class="history-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">TODAY'S LOG</p>
+              <h2>饮水记录</h2>
+            </div>
+            <span class="record-count" id="recordCount">0 条</span>
+          </div>
+          <div class="history-list" id="historyList"></div>
+        </section>
+      </div>
+
+      <!-- ========== 药物页面 ========== -->
+      <div class="tab-panel" id="medicinePanel" hidden>
+        <section class="supplement-summary">
+          <div class="supplement-stats">
+            <div class="stat-card medicine-stat">
+              <strong id="medicineTakenCount">0</strong>
+              <span>已服用</span>
+            </div>
+            <div class="stat-card medicine-stat">
+              <strong id="medicineTotalCount">0</strong>
+              <span>需服用</span>
+            </div>
+            <div class="stat-card medicine-stat">
+              <strong id="medicinePercent">0%</strong>
+              <span>完成度</span>
+            </div>
+          </div>
+          <div class="workout-row" id="medicineWorkoutRow">
+            <button class="workout-toggle" id="medicineWorkoutToggle" type="button">
+              <span class="workout-icon">🏋️</span>
+              <span class="workout-label">今天是健身日</span>
+              <span class="workout-indicator"></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="quick-add">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">DAILY MEDICINE</p>
+              <h2>今天吃药了吗？</h2>
+            </div>
+            <button class="text-button" id="customMedicineButton" type="button">+ 自定义</button>
+          </div>
+
+          <div class="supplement-grid" id="medicineGrid">
+            <!-- 动态渲染 -->
+          </div>
+
+          <p class="cup-hint" id="medicineHint">点击卡片标记已服用，再次点击可取消</p>
+        </section>
+
+        <section class="history-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">MEDICINE LOG</p>
+              <h2>药物记录</h2>
+            </div>
+            <span class="record-count" id="medicineRecordCount">0 条</span>
+          </div>
+          <div class="history-list" id="medicineHistoryList"></div>
+        </section>
+      </div>
+
+      <!-- ========== 补剂页面 ========== -->
+      <div class="tab-panel" id="supplementPanel" hidden>
+        <section class="supplement-summary">
+          <div class="supplement-stats">
+            <div class="stat-card">
+              <strong id="supplementTakenCount">0</strong>
+              <span>已服用</span>
+            </div>
+            <div class="stat-card">
+              <strong id="supplementTotalCount">0</strong>
+              <span>需服用</span>
+            </div>
+            <div class="stat-card">
+              <strong id="supplementPercent">0%</strong>
+              <span>完成度</span>
+            </div>
+          </div>
+          <div class="workout-row" id="supplementWorkoutRow">
+            <button class="workout-toggle" id="supplementWorkoutToggle" type="button">
+              <span class="workout-icon">🏋️</span>
+              <span class="workout-label">今天是健身日</span>
+              <span class="workout-indicator"></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="quick-add">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">DAILY SUPPLEMENTS</p>
+              <h2>今天吃了什么？</h2>
+            </div>
+            <button class="text-button" id="customSupplementButton" type="button">+ 自定义</button>
+          </div>
+
+          <div class="supplement-grid" id="supplementGrid">
+            <!-- 动态渲染 -->
+          </div>
+
+          <p class="cup-hint" id="supplementHint">点击卡片标记已服用，再次点击可取消</p>
+        </section>
+
+        <section class="history-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">SUPPLEMENT LOG</p>
+              <h2>补剂记录</h2>
+            </div>
+            <span class="record-count" id="supplementRecordCount">0 条</span>
+          </div>
+          <div class="history-list" id="supplementHistoryList"></div>
+        </section>
+      </div>
     </main>
 
     <dialog id="goalDialog">
@@ -165,7 +288,7 @@
             <p class="eyebrow">DAILY GOAL</p>
             <h2>设置每日目标</h2>
           </div>
-          <button class="close-button" value="cancel" type="submit" aria-label="关闭">×</button>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
         </div>
         <label for="goalInput">目标饮水量</label>
         <div class="number-field">
@@ -189,7 +312,7 @@
             <p class="eyebrow">CUSTOM WATER</p>
             <h2>自定义饮水量</h2>
           </div>
-          <button class="close-button" value="cancel" type="submit" aria-label="关闭">×</button>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
         </div>
         <label for="customName">名称</label>
         <input class="text-field" id="customName" type="text" maxlength="30" value="其他饮水" required />
@@ -199,6 +322,74 @@
           <span>ml</span>
         </div>
         <button class="primary-button" value="default" type="submit">添加记录</button>
+      </form>
+    </dialog>
+
+    <dialog id="customSupplementDialog">
+      <form method="dialog" id="customSupplementForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">CUSTOM SUPPLEMENT</p>
+            <h2>自定义补剂</h2>
+          </div>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+        </div>
+        <label for="customSupplementName">名称</label>
+        <input class="text-field" id="customSupplementName" type="text" maxlength="30" value="" placeholder="例如：维生素B、蛋白粉" required />
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+          <div>
+            <label for="customSupplementDosage">每份剂量</label>
+            <input class="text-field" id="customSupplementDosage" type="text" maxlength="20" value="" placeholder="例如：1粒、5g" />
+          </div>
+          <div>
+            <label for="customSupplementTarget">每日次数</label>
+            <div class="number-field">
+              <input id="customSupplementTarget" type="number" min="1" max="20" step="1" value="1" required />
+              <span>次/日</span>
+            </div>
+          </div>
+        </div>
+        <label for="customSupplementSchedule">服用排程</label>
+        <select class="text-field" id="customSupplementSchedule">
+          <option value="everyday">每天</option>
+          <option value="weekday">仅工作日（周一~周五）</option>
+          <option value="workout">仅健身日</option>
+        </select>
+        <button class="primary-button" value="default" type="submit">添加补剂</button>
+      </form>
+    </dialog>
+
+    <dialog id="customMedicineDialog">
+      <form method="dialog" id="customMedicineForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">CUSTOM MEDICINE</p>
+            <h2>自定义药物</h2>
+          </div>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+        </div>
+        <label for="customMedicineName">名称</label>
+        <input class="text-field" id="customMedicineName" type="text" maxlength="30" value="" placeholder="例如：阿莫西林、布洛芬" required />
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+          <div>
+            <label for="customMedicineDosage">每份剂量</label>
+            <input class="text-field" id="customMedicineDosage" type="text" maxlength="20" value="" placeholder="例如：1粒、500mg" />
+          </div>
+          <div>
+            <label for="customMedicineTarget">每日次数</label>
+            <div class="number-field">
+              <input id="customMedicineTarget" type="number" min="1" max="20" step="1" value="1" required />
+              <span>次/日</span>
+            </div>
+          </div>
+        </div>
+        <label for="customMedicineSchedule">服用排程</label>
+        <select class="text-field" id="customMedicineSchedule">
+          <option value="everyday">每天</option>
+          <option value="weekday">仅工作日（周一~周五）</option>
+          <option value="workout">仅健身日</option>
+        </select>
+        <button class="primary-button" value="default" type="submit">添加药物</button>
       </form>
     </dialog>
 
