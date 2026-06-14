@@ -65,6 +65,9 @@
         <button class="tab-button" id="supplementTab" type="button" role="tab" aria-selected="false">
           <span class="tab-icon">💊</span> 补剂
         </button>
+        <button class="tab-button" id="overviewTab" type="button" role="tab" aria-selected="false">
+          <span class="tab-icon">📋</span> 概览
+        </button>
       </nav>
 
       <section class="date-row" aria-label="日期选择">
@@ -277,6 +280,13 @@
             <span class="record-count" id="supplementRecordCount">0 条</span>
           </div>
           <div class="history-list" id="supplementHistoryList"></div>
+        </section>
+      </div>
+
+      <!-- ========== 概览页面 ========== -->
+      <div class="tab-panel" id="overviewPanel" hidden>
+        <section class="overview-cards" id="overviewCards">
+          <!-- 动态渲染三栏概览 -->
         </section>
       </div>
     </main>
