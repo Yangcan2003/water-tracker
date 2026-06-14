@@ -48,7 +48,8 @@ function $(sel) { return document.querySelector(sel); }
   "goalButton","goalDialog","goalForm","goalInput",
   "customButton","customDialog","customForm","customName","customAmount",
   "toast","toastText","undoButton",
-  "waterTab","medicineTab","supplementTab","waterPanel","medicinePanel","supplementPanel",
+  "waterTab","medicineTab","supplementTab","overviewTab",
+  "waterPanel","medicinePanel","supplementPanel","overviewPanel","overviewCards",
   // 药物
   "medicineGrid","medicineTakenCount","medicineTotalCount","medicinePercent",
   "medicineRecordCount","medicineHistoryList","medicineHint",
@@ -123,6 +124,7 @@ E.historyList.addEventListener("click", (event) => {
 E.waterTab.addEventListener("click", () => switchTab("water"));
 E.medicineTab.addEventListener("click", () => switchTab("medicine"));
 E.supplementTab.addEventListener("click", () => switchTab("supplement"));
+E.overviewTab.addEventListener("click", () => switchTab("overview"));
 
 // 健身日开关
 E.medicineWorkoutToggle.addEventListener("click", () => toggleWorkoutDay());
@@ -221,6 +223,7 @@ function switchTab(tab) {
     { id: "water", button: E.waterTab, panel: E.waterPanel, title: "今天喝水了吗？" },
     { id: "medicine", button: E.medicineTab, panel: E.medicinePanel, title: "今天吃药了吗？" },
     { id: "supplement", button: E.supplementTab, panel: E.supplementPanel, title: "今天吃补剂了吗？" },
+    { id: "overview", button: E.overviewTab, panel: E.overviewPanel, title: "今日概览" },
   ];
   tabs.forEach(t => {
     const active = t.id === tab;
@@ -231,6 +234,7 @@ function switchTab(tab) {
   });
   E.goalButton.hidden = tab !== "water";
   if (tab === "water") render();
+  else if (tab === "overview") renderOverview();
   else renderItemList(tab);
 }
 
@@ -695,6 +699,69 @@ function renderItemList(type) {
       </article>`;
     }).join("");
   }
+}
+
+// ========== 概览渲染 ==========
+function renderOverview() {
+  const waterTotal = records.reduce((s, r) => s + Number(r.amount), 0);
+  const waterPct = dailyGoal > 0 ? Math.min(Math.round((waterTotal / dailyGoal) * 100), 100) : 0;
+
+  // 药物
+  const medFull = getFullList("medicine");
+  const medActive = medFull.filter(s => isItemActiveToday("medicine", s));
+  const medDone = medActive.filter(s => getCount("medicine", s.name) >= (s.targetCount || 1)).length;
+
+  // 补剂
+  const supFull = getFullList("supplement");
+  const supActive = supFull.filter(s => isItemActiveToday("supplement", s));
+  const supDone = supActive.filter(s => getCount("supplement", s.name) >= (s.targetCount || 1)).length;
+
+  const weekdayLabel = isWeekday(selectedDate) ? "工作日" : "周末";
+  const gymLabel = isWorkoutDay ? " · 健身日" : "";
+
+  function renderOverviewSection(icon, title, total, done, items, activeList, type) {
+    const pct = activeList.length > 0 ? Math.round((done / activeList.length) * 100) : 0;
+    let itemsHtml = "";
+    if (type === "water") {
+      itemsHtml = `<div class="ov-water-bar">
+        <div class="ov-water-fill" style="width:${Math.min((waterTotal/dailyGoal)*100,100)}%"></div>
+        <span>${waterTotal} / ${dailyGoal} ml (${waterPct}%)</span>
+      </div>`;
+    } else {
+      itemsHtml = items.map(item => {
+        const active = isItemActiveToday(type, item);
+        const cnt = getCount(type, item.name);
+        const tgt = item.targetCount || 1;
+        const done = cnt >= tgt;
+        const reason = active ? "" : getSkipReason(type, item);
+        let icon2, cls;
+        if (!active) { icon2 = "—"; cls = "skipped"; }
+        else if (done) { icon2 = "✓"; cls = "taken"; }
+        else if (cnt > 0) { icon2 = "◐"; cls = "partial"; }
+        else { icon2 = "✗"; cls = "missed"; }
+        const label = active ? `${cnt}/${tgt}` : reason;
+        return `<span class="ov-item ${cls}" title="${esc(item.name)}: ${label}">
+          <span class="ov-item-emoji">${item.emoji||"💊"}</span>
+          <span class="ov-item-name">${esc(item.name)}</span>
+          <span class="ov-item-status">${icon2} ${label}</span>
+        </span>`;
+      }).join("");
+    }
+    return `<div class="ov-card">
+      <div class="ov-card-head">
+        <span>${icon}</span>
+        <strong>${title}</strong>
+        <span class="ov-card-pct">${type === "water" ? waterPct : pct}%</span>
+      </div>
+      <div class="ov-card-body">${itemsHtml}</div>
+      <div class="ov-card-foot">${done}/${activeList.length} 完成${type !== "water" ? ` · ${weekdayLabel}${gymLabel}` : ""}</div>
+    </div>`;
+  }
+
+  E.overviewCards.innerHTML =
+    renderOverviewSection("💧", "饮水", waterTotal, 0, [], [], "water") +
+    renderOverviewSection("💚", "药物", 0, medDone, medFull, medActive, "medicine") +
+    renderOverviewSection("💊", "补剂", 0, supDone, supFull, supActive, "supplement");
 }
 
 // ========== 工具 ==========
