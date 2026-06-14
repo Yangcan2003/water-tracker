@@ -955,111 +955,90 @@ dialog label {
   display: none !important;
 }
 
-/* ---- 概览页面 ---- */
-.overview-cards {
+/* ---- 历史弹窗 ---- */
+#historyDialog {
+  width: min(calc(100% - 32px), 700px);
+}
+
+.hist-row {
   display: grid;
-  gap: 18px;
-  margin-top: 10px;
+  grid-template-columns: 100px 1fr;
+  gap: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(23, 61, 58, 0.06);
 }
 
-.ov-card {
-  padding: 22px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.75);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 8px 24px rgba(27, 78, 71, 0.05);
+.hist-row:last-child { border-bottom: 0; }
+
+.hist-date strong {
+  display: block;
+  font-size: 15px;
 }
 
-.ov-card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
+.hist-date span {
+  font-size: 11px;
+  color: var(--muted);
 }
 
-.ov-card-head strong {
-  font-size: 17px;
-  flex: 1;
-}
-
-.ov-card-pct {
-  font-family: "Arial Rounded MT Bold", "Microsoft YaHei UI", sans-serif;
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--mint-600);
-}
-
-.ov-card-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.ov-water-bar {
-  position: relative;
-  width: 100%;
-  height: 36px;
-  overflow: hidden;
-  border-radius: 10px;
-  background: var(--mint-100);
-}
-
-.ov-water-fill {
-  height: 100%;
-  border-radius: 10px;
-  background: linear-gradient(90deg, var(--mint-400), var(--mint-600));
-  transition: width 0.5s ease;
-}
-
-.ov-water-bar span {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.ov-item {
+.hist-col {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.65);
+  padding: 3px 0;
   font-size: 13px;
-  border: 1px solid rgba(23, 61, 58, 0.05);
+  flex-wrap: wrap;
 }
 
-.ov-item.taken {
-  background: #e3f7f0;
-  border-color: var(--mint-400);
+.hist-label {
+  font-size: 14px;
+  width: 22px;
+  flex-shrink: 0;
 }
 
-.ov-item.partial {
-  background: #fff8e8;
-  border-color: #e8d48b;
+.hist-val {
+  font-weight: 700;
+  min-width: 45px;
 }
 
-.ov-item.missed {
-  background: #fff5f5;
-  border-color: #f0c4c4;
+.hist-bar {
+  width: 80px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--mint-100);
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.ov-item.skipped {
-  opacity: 0.4;
+.hist-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--mint-400), var(--mint-600));
 }
 
-.ov-item-emoji { font-size: 16px; }
-.ov-item-name { font-weight: 600; }
-.ov-item-status { color: var(--muted); font-size: 11px; margin-left: auto; }
-
-.ov-card-foot {
-  margin-top: 10px;
-  color: var(--muted);
+.hist-pct {
   font-size: 11px;
+  color: var(--muted);
+  min-width: 30px;
+}
+
+.hist-dot {
+  display: inline-grid;
+  width: 20px; height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.hist-dot.green { background: #e3f7f0; color: var(--mint-600); }
+.hist-dot.yellow { background: #fff8e8; color: #b8952e; }
+.hist-dot.red { background: #fff0ef; color: var(--red); }
+.hist-dot.gray { background: #f5f5f5; color: #bbb; }
+
+.hist-empty {
+  color: #ccc;
+  font-size: 12px;
 }
 
 /* ---- 补剂统计卡片 ---- */
