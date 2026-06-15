@@ -177,10 +177,39 @@
             </button>
             <button class="toilet-btn small-btn" type="button" data-type="small">
               <span class="toilet-emoji">
-                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="5" y="2" width="22" height="3.5" rx="1.75" fill="currentColor"/>
-                  <path d="M8 5.5 C4 12 6 24 13 26 C15.5 27.5 16.5 27.5 19 26 C26 24 28 12 24 5.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-                  <circle cx="16" cy="22" r="2.5" fill="currentColor" opacity="0.6"/>
+                <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="urinalBody" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#ffffff"/>
+                      <stop offset="100%" stop-color="#e9eef5"/>
+                    </linearGradient>
+                    <linearGradient id="urinalInner" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#e6eaf0"/>
+                      <stop offset="100%" stop-color="#ffffff"/>
+                    </linearGradient>
+                    <linearGradient id="urinalMetal" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stop-color="#b9bec7"/>
+                      <stop offset="45%" stop-color="#ffffff"/>
+                      <stop offset="100%" stop-color="#8f96a1"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M70 44 Q120 28 170 44 Q185 50 182 72 L164 178 Q158 214 120 218 Q82 214 76 178 L58 72 Q55 50 70 44Z" fill="url(#urinalBody)" stroke="#cfd6df" stroke-width="4"/>
+                  <path d="M77 56 Q120 43 163 56 Q173 61 170 76 L154 170 Q149 195 120 199 Q91 195 86 170 L70 76 Q67 61 77 56Z" fill="none" stroke="#ffffff" stroke-width="5" opacity="0.9"/>
+                  <path d="M88 72 Q120 60 152 72 Q162 76 160 91 L148 158 Q144 179 120 181 Q96 179 92 158 L80 91 Q78 76 88 72Z" fill="url(#urinalInner)" stroke="#c8ced8" stroke-width="3"/>
+                  <ellipse cx="88" cy="118" rx="8" ry="24" fill="#ffffff" opacity="0.45"/>
+                  <ellipse cx="152" cy="118" rx="8" ry="24" fill="#ffffff" opacity="0.35"/>
+                  <ellipse cx="120" cy="168" rx="23" ry="18" fill="#dce2ea"/>
+                  <ellipse cx="120" cy="168" rx="17" ry="13" fill="#f6f7f9" stroke="#aab2bd" stroke-width="2"/>
+                  <circle cx="112" cy="164" r="3" fill="#333"/>
+                  <circle cx="120" cy="163" r="3" fill="#333"/>
+                  <circle cx="128" cy="164" r="3" fill="#333"/>
+                  <circle cx="108" cy="171" r="3" fill="#333"/>
+                  <circle cx="118" cy="171" r="3" fill="#333"/>
+                  <circle cx="128" cy="171" r="3" fill="#333"/>
+                  <circle cx="120" cy="176" r="3" fill="#333"/>
+                  <ellipse cx="120" cy="44" rx="16" ry="7" fill="#d7dbe1" stroke="#8f96a1" stroke-width="2"/>
+                  <rect x="109" y="24" width="22" height="22" rx="5" fill="url(#urinalMetal)" stroke="#8f96a1" stroke-width="2"/>
+                  <ellipse cx="120" cy="24" rx="11" ry="5" fill="#f6f7f9" stroke="#a4abb5" stroke-width="2"/>
                 </svg>
               </span>
               <strong>小号</strong>
