@@ -1905,6 +1905,23 @@ dialog label {
   box-shadow: 0 0 0 2px rgba(22,141,132,0.2);
 }
 
+.hist-load-more {
+  text-align: center;
+  padding: 14px 0 4px;
+}
+
+.hist-load-more button {
+  font-size: 14px;
+  color: var(--mint-600);
+}
+
+.hist-end {
+  text-align: center;
+  padding: 14px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1912,4 +1929,197 @@ dialog label {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ========== 暗色模式 ========== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #d4dcd9;
+    --muted: #8a9e99;
+    --paper: #1a2422;
+    --mint-50: #1e2e2b;
+    --mint-100: #223834;
+    --mint-200: #2a453f;
+    --mint-400: #168d84;
+    --mint-600: #28b8ab;
+    --mint-700: #3dd4c4;
+    --red: #e86c65;
+    --blue: #6baad6;
+    --shadow: 0 24px 70px rgba(0,0,0,0.35);
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 10% 10%, rgba(22,141,132,0.15), transparent 28%),
+      radial-gradient(circle at 90% 36%, rgba(66,143,203,0.1), transparent 30%),
+      #141d1b;
+  }
+
+  .app-shell {
+    background: var(--paper);
+  }
+
+  .auth-shell {
+    background: transparent;
+  }
+
+  .auth-card, .auth-dialog-content {
+    background: rgba(38,52,49,0.85);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .progress-card,
+  .source-card,
+  .supplement-card,
+  .stat-card,
+  .toilet-btn,
+  .sync-button,
+  .history-item,
+  .dialog-heading,
+  .profile-content,
+  .profile-actions,
+  .hist-row {
+    background: rgba(255,255,255,0.04);
+  }
+
+  .source-card:hover,
+  .supplement-card:hover,
+  .hist-row:hover {
+    background: rgba(255,255,255,0.08);
+  }
+
+  .tab-button {
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+  }
+
+  .tab-button.active {
+    background: var(--mint-600);
+    color: #fff;
+  }
+
+  .text-field, .number-field, select.text-field {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+    color: var(--ink);
+  }
+
+  .text-field:focus, .number-field:focus, select.text-field:focus {
+    border-color: var(--mint-400);
+    background: rgba(255,255,255,0.08);
+  }
+
+  dialog {
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  dialog::backdrop {
+    background: rgba(0,0,0,0.6);
+  }
+
+  .history-item, .hist-row {
+    border-color: rgba(255,255,255,0.06);
+  }
+
+  .delete-record {
+    color: var(--muted);
+  }
+
+  .delete-record:hover {
+    color: var(--red);
+    background: rgba(216,79,70,0.12);
+  }
+
+  .close-button {
+    color: var(--muted);
+  }
+
+  .close-button:hover {
+    background: rgba(255,255,255,0.08);
+  }
+
+  .preset-row button {
+    background: rgba(255,255,255,0.06);
+    color: var(--ink);
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  .preset-row button:hover {
+    background: var(--mint-600);
+    border-color: var(--mint-600);
+    color: #fff;
+  }
+
+  .danger-button {
+    background: rgba(216,79,70,0.15);
+    color: var(--red);
+  }
+
+  .danger-button:hover {
+    background: rgba(216,79,70,0.25);
+  }
+
+  .toast {
+    background: rgba(30,40,37,0.95);
+    color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .supplement-card.skipped {
+    background: rgba(255,255,255,0.02);
+    border-style: dashed;
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  .medicine-card.taken {
+    background: rgba(22,141,132,0.12);
+  }
+
+  .supplement-card.taken {
+    background: rgba(22,141,132,0.1);
+  }
+
+  .big-btn { border-color: rgba(216,79,70,0.3); }
+  .small-btn { border-color: rgba(66,143,203,0.3); }
+
+  .profile-action-btn {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.06);
+  }
+
+  .profile-action-btn:hover {
+    background: rgba(255,255,255,0.08);
+  }
+
+  .profile-logout-btn {
+    color: var(--red);
+  }
+
+  .offline-badge {
+    background: rgba(251,191,36,0.15);
+    color: #fbbf24;
+  }
+
+  .skip-badge {
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+  }
+
+  .count-dot {
+    color: rgba(255,255,255,0.2);
+  }
+
+  .count-dot.filled {
+    color: var(--mint-600);
+  }
+
+  .hist-dot.green { background: rgba(22,163,120,0.2); color: #16a378; }
+  .hist-dot.yellow { background: rgba(234,179,8,0.2); color: #eab308; }
+  .hist-dot.red { background: rgba(239,68,68,0.2); color: #ef4444; }
+  .hist-dot.gray { background: rgba(255,255,255,0.04); color: var(--muted); }
+
+  .detail-dot.taken { color: #16a378; }
+  .detail-dot.partial { color: #eab308; }
+  .detail-dot.missed { color: #ef4444; }
 }

@@ -23,6 +23,8 @@ let isWorkoutDay = false;
 let workoutDaysCache = {};
 let historyDayData = [];
 let historyViewMode = "overview";
+let historyOffset = 0;
+const HISTORY_PAGE_SIZE = 14;
 
 let avatarType = "default";
 let avatarColor = "#168d84";
@@ -45,7 +47,7 @@ function $(sel) { return document.querySelector(sel); }
   "historyDialog","historyContent",
   "avatarButton","avatarImg","profileDialog","profileAvatar","profileEmail",
   "editAvatarButton","profileGoalButton","profileGoalVal",
-  "profileHistoryButton","profileLogoutButton",
+  "profileHistoryButton","profileExportButton","profileLogoutButton",
   "avatarDialog","avatarPreview","avatarColors","avatarUrlInput","avatarSaveButton",
   "medicineGrid","medicineTakenCount","medicineTotalCount","medicinePercent",
   "medicineRecordCount","medicineHistoryList","medicineHint",
@@ -85,6 +87,7 @@ if (E.syncButton) E.syncButton.addEventListener("click", () => {
 E.avatarButton.addEventListener("click", openProfile);
 E.profileGoalButton.addEventListener("click", () => { E.profileDialog.close(); E.goalInput.value = dailyGoal; E.goalDialog.showModal(); setTimeout(() => E.goalInput.select(), 50); });
 E.profileHistoryButton.addEventListener("click", () => { E.profileDialog.close(); loadHistory(); E.historyDialog.showModal(); });
+E.profileExportButton.addEventListener("click", exportData);
 E.profileLogoutButton.addEventListener("click", () => { E.profileDialog.close(); if (currentUser) { signOut(auth); } else { setAuthMode("login"); E.authDialog.showModal(); } });
 E.editAvatarButton.addEventListener("click", openAvatarEditor);
 E.avatarSaveButton.addEventListener("click", saveAvatar);
@@ -191,19 +194,30 @@ window.addEventListener("online", updateOnlineStatus);
 window.addEventListener("offline", updateOnlineStatus);
 
 // ========== 排程工具 ==========
+function isItemActiveOnDay(sch, wd, wo) {
+  switch (sch) {
+    case "everyday": return true;
+    case "weekday": return wd;
+    case "workout": return wo;
+    case "workout_weekday": return wd && wo;
+    default: return true;
+  }
+}
+
 function isItemActiveToday(type, item) {
-  const sch = item.schedule || "everyday";
-  if (sch === "everyday") return true;
-  if (sch === "weekday") return isWeekday(selectedDate);
-  if (sch === "workout") return isWeekday(selectedDate) && isWorkoutDay;
-  return true;
+  return isItemActiveOnDay(item.schedule || "everyday", isWeekday(selectedDate), isWorkoutDay);
 }
 
 function getSkipReason(type, item) {
   const sch = item.schedule || "everyday";
-  if (sch === "weekday" && !isWeekday(selectedDate)) return "周末休息";
-  if (sch === "workout" && !isWeekday(selectedDate)) return "周末休息";
+  const wd = isWeekday(selectedDate);
+  if (sch === "weekday" && !wd) return "周末休息";
   if (sch === "workout" && !isWorkoutDay) return "非健身日";
+  if (sch === "workout_weekday") {
+    if (!wd && !isWorkoutDay) return "周末休息 · 非健身日";
+    if (!wd) return "周末休息";
+    if (!isWorkoutDay) return "非健身日";
+  }
   return "";
 }
 
@@ -326,7 +340,12 @@ async function applyUser(user) {
   // 检查是否有本地数据需要合并
   if (storage.hasLocalData()) {
     showToast("正在同步本地数据到云端...", false);
-    await storage.mergeLocalToCloud();
+    try {
+      await storage.mergeLocalToCloud();
+      showToast("本地数据已同步到云端 ✅", false);
+    } catch (e) {
+      showToast("云端同步失败，数据保留在本地", false);
+    }
   }
 
   await Promise.all([loadProfile(), loadDay()]);
@@ -374,6 +393,17 @@ async function loadProfile() {
     dailyGoal = Number(profile.dailyGoal) || 2000;
     userMedicines = (Array.isArray(profile.medicines) ? profile.medicines : [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
     userSupplements = (Array.isArray(profile.supplements) ? profile.supplements : [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
+    // 迁移旧 "workout" 排程 → "workout_weekday"（保持工作日+健身日原有行为）
+    let migrated = false;
+    for (const arr of [userMedicines, userSupplements]) {
+      for (const item of arr) {
+        if (item.schedule === "workout") { item.schedule = "workout_weekday"; migrated = true; }
+      }
+    }
+    if (migrated && currentUser) {
+      storage.saveItems("medicine", userMedicines).catch(() => {});
+      storage.saveItems("supplement", userSupplements).catch(() => {});
+    }
     avatarType = profile.avatarType || "default";
     avatarColor = profile.avatarColor || AVATAR_COLORS[0];
     avatarUrl = profile.avatarUrl || "";
@@ -498,11 +528,15 @@ async function deleteRecord(id) {
   const idx = records.findIndex(r => r.id === id);
   if (idx < 0) return;
   const [rec] = records.splice(idx, 1); render();
+  lastDeleted = { record: rec, index: idx, type: "water" };
+  showToast(`已删除 ${rec.amount} ml 记录`, true);
   try {
     await storage.deleteWaterLog(id);
-    lastDeleted = { record: rec, index: idx, type: "water" };
-    showToast(`已删除 ${rec.amount} ml 记录`, true);
-  } catch (e) { records.splice(idx, 0, rec); render(); showToast(toFriendlyError(e), false); }
+  } catch (e) {
+    records.splice(idx, 0, rec); render();
+    lastDeleted = null;
+    showToast(toFriendlyError(e), false);
+  }
 }
 
 async function undoDelete() {
@@ -611,12 +645,16 @@ async function deleteToiletRecord(id) {
   const idx = toiletRecords.findIndex(r => r.id === id);
   if (idx < 0) return;
   const [rec] = toiletRecords.splice(idx, 1); renderToiletHistory();
+  lastDeleted = { record: rec, index: idx, type: "toilet" };
+  const label = rec.type === "big" ? "大号" : "小号";
+  showToast(`已删除 ${label} 记录`, true);
   try {
     await storage.deleteLog("toilet", id);
-    lastDeleted = { record: rec, index: idx, type: "toilet" };
-    const label = rec.type === "big" ? "大号" : "小号";
-    showToast(`已删除 ${label} 记录`, true);
-  } catch (e) { toiletRecords.splice(idx, 0, rec); renderToiletHistory(); showToast(toFriendlyError(e), false); }
+  } catch (e) {
+    toiletRecords.splice(idx, 0, rec); renderToiletHistory();
+    lastDeleted = null;
+    showToast(toFriendlyError(e), false);
+  }
 }
 
 // ========== 药物/补剂 通用 ==========
@@ -811,11 +849,15 @@ async function deleteItemRecord(type, id) {
   const idx = cfg.recs.findIndex(r => r.id === id);
   if (idx < 0) return;
   const [rec] = cfg.recs.splice(idx, 1); renderItemList(type);
+  lastDeleted = { record: rec, index: idx, type };
+  showToast(`已删除 ${rec.name} 记录`, true);
   try {
     await storage.deleteLog(type, id);
-    lastDeleted = { record: rec, index: idx, type };
-    showToast(`已删除 ${rec.name} 记录`, true);
-  } catch (e) { cfg.recs.splice(idx, 0, rec); renderItemList(type); showToast(toFriendlyError(e), false); }
+  } catch (e) {
+    cfg.recs.splice(idx, 0, rec); renderItemList(type);
+    lastDeleted = null;
+    showToast(toFriendlyError(e), false);
+  }
 }
 
 // ========== 饮水渲染 ==========
@@ -928,33 +970,66 @@ function renderItemList(type) {
   const hint = isMed ? E.medicineHint : E.supplementHint;
   hint.textContent = `点击卡片 +1 · 灰色=今日跳过`;
 
+  const label = isMed ? "药物" : "补剂";
+  renderItemHistoryHTML(type, isMed, fullList, label);
+}
+
+// ========== 药物/补剂渲染辅助 ==========
+function renderItemHistoryHTML(type, isMed, fullList, label) {
   const recs = isMed ? medicineRecords : supplementRecords;
   const countEl = isMed ? E.medicineRecordCount : E.supplementRecordCount;
   const listEl = isMed ? E.medicineHistoryList : E.supplementHistoryList;
-  const label = isMed ? "药物" : "补剂";
+  const coll = isMed ? "medicineLogs" : "supplementLogs";
   countEl.textContent = `${recs.length} 条`;
   if (recs.length === 0) {
     listEl.innerHTML = `<div class="empty-state">这一天还没有${label}记录，点击上方卡片开始记录吧。</div>`;
-  } else {
-    listEl.innerHTML = [...recs].reverse().map(r => {
-      const tv = toTimeValue(r.recordedAt);
-      const td = toTimeDisplay(tv);
-      const coll = isMed ? "medicineLogs" : "supplementLogs";
-      const item = fullList.find(s => s.name === r.name);
-      const target = item?.targetCount || 1;
-      const cnt = r.count || 0;
-      const done = cnt >= target;
-      const icon = done ? "✓" : (cnt > 0 ? "◐" : "✗");
-      const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
-      const txt = done ? `已完成 ${cnt}/${target}` : (cnt > 0 ? `部分 ${cnt}/${target}` : "未服用");
-      return `<article class="history-item supplement-history-item">
-        <span class="history-dot supplement-dot ${cls}">${icon}</span>
-        <div class="history-info"><strong>${esc(r.name)}</strong><span>${esc(r.dosage || "")} · <span class="time-editable" data-id="${r.id}" data-coll="${coll}" data-time="${tv}" title="点击修改时间">${td}</span></span></div>
-        <strong class="history-amount supplement-status ${cls}">${txt}</strong>
-        <button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button>
-      </article>`;
-    }).join("");
+    return;
   }
+  listEl.innerHTML = [...recs].reverse().map(r => {
+    const tv = toTimeValue(r.recordedAt);
+    const td = toTimeDisplay(tv);
+    const item = fullList.find(s => s.name === r.name);
+    const target = item?.targetCount || 1;
+    const cnt = r.count || 0;
+    const done = cnt >= target;
+    const icon = done ? "✓" : (cnt > 0 ? "◐" : "✗");
+    const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
+    const txt = done ? `已完成 ${cnt}/${target}` : (cnt > 0 ? `部分 ${cnt}/${target}` : "未服用");
+    return `<article class="history-item supplement-history-item">
+      <span class="history-dot supplement-dot ${cls}">${icon}</span>
+      <div class="history-info"><strong>${esc(r.name)}</strong><span>${esc(r.dosage || "")} · <span class="time-editable" data-id="${r.id}" data-coll="${coll}" data-time="${tv}" title="点击修改时间">${td}</span></span></div>
+      <strong class="history-amount supplement-status ${cls}">${txt}</strong>
+      <button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button>
+    </article>`;
+  }).join("");
+}
+
+function renderDayDetailItemHTML(type, recs) {
+  if (!recs || recs.length === 0) return "";
+  const isToilet = type === "toilet";
+  const isMed = type === "medicine";
+  const isSupp = type === "supplement";
+  const fullList = isMed ? getFullList("medicine") : isSupp ? getFullList("supplement") : null;
+  return [...recs].sort((a, b) => {
+    const ta = a.recordedAt?.toDate?.() ?? new Date(0);
+    const tb = b.recordedAt?.toDate?.() ?? new Date(0);
+    return tb - ta;
+  }).map(r => {
+    const t = r.recordedAt?.toDate?.() ?? new Date();
+    const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    if (isToilet) {
+      const icon = r.type === "big" ? TOILET_SVG.bigSmall : TOILET_SVG.smallSmall;
+      const label = r.type === "big" ? "大号" : "小号";
+      return `<div class="detail-item"><span class="detail-dot">${icon}</span><span class="detail-name">${label}</span><span class="detail-time">${td}</span></div>`;
+    }
+    const cnt = r.count || 0;
+    const item = fullList.find(s => s.name === r.name);
+    const target = item?.targetCount || 1;
+    const done = cnt >= target;
+    const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
+    const txt = done ? `✓ ${cnt}/${target}` : (cnt > 0 ? `${cnt}/${target}` : "未服");
+    return `<div class="detail-item"><span class="detail-dot ${cls}">💊</span><span class="detail-name">${esc(r.name)}</span><span class="detail-dosage">${esc(r.dosage || "")}</span><span class="detail-time">${td}</span><strong class="detail-val detail-status-${cls}">${txt}</strong></div>`;
+  }).join("");
 }
 
 function toiletItems(toiletRecs) {
@@ -968,20 +1043,30 @@ function toiletItems(toiletRecs) {
 }
 
 // ========== 历史记录弹窗 ==========
-async function loadHistory() {
-  E.historyContent.innerHTML = '<div class="empty-state">正在加载历史记录...</div>';
+async function loadHistory(more = false) {
+  if (!more) {
+    historyOffset = 0;
+    historyDayData = [];
+    E.historyContent.innerHTML = '<div class="empty-state">正在加载历史记录...</div>';
+  }
   try {
     const dates = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = historyOffset; i < historyOffset + HISTORY_PAGE_SIZE; i++) {
       const d = new Date(); d.setDate(d.getDate() - i);
       dates.push(toDateKey(d));
     }
+    historyOffset += HISTORY_PAGE_SIZE;
     const dayData = await storage.getHistory(dates);
-    historyDayData = dayData;
+    if (more) {
+      historyDayData = [...historyDayData, ...dayData];
+    } else {
+      historyDayData = dayData;
+    }
     historyViewMode = "overview";
 
     const now = new Date();
-    E.historyContent.innerHTML = dayData.map((day, i) => {
+    const offset = more ? historyDayData.length - dayData.length : 0;
+    const html = dayData.map((day, i) => {
       const d = fromDateKey(day.dateKey);
       const isToday = day.dateKey === toDateKey(now);
       const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
@@ -1001,7 +1086,7 @@ async function loadHistory() {
         const cnt = rec ? rec.count : 0;
         const tgt = item.targetCount || 1;
         const sch = item.schedule || "everyday";
-        const active = sch === "everyday" || (sch === "weekday" && isWkdy) || (sch === "workout" && isWkdy && day.isWorkout);
+        const active = isItemActiveOnDay(sch, isWkdy, day.isWorkout);
         if (!active) return `<span class="hist-dot gray" title="${item.name}: 跳过">—</span>`;
         if (cnt >= tgt) return `<span class="hist-dot green" title="${item.name}: ✓ ${cnt}/${tgt}">✓</span>`;
         if (cnt > 0) return `<span class="hist-dot yellow" title="${item.name}: ${cnt}/${tgt}">◐</span>`;
@@ -1013,14 +1098,15 @@ async function loadHistory() {
         const cnt = rec ? rec.count : 0;
         const tgt = item.targetCount || 1;
         const sch = item.schedule || "everyday";
-        const active = sch === "everyday" || (sch === "weekday" && isWkdy) || (sch === "workout" && isWkdy && day.isWorkout);
+        const active = isItemActiveOnDay(sch, isWkdy, day.isWorkout);
         if (!active) return `<span class="hist-dot gray" title="${item.name}: 跳过">—</span>`;
         if (cnt >= tgt) return `<span class="hist-dot green" title="${item.name}: ✓ ${cnt}/${tgt}">✓</span>`;
         if (cnt > 0) return `<span class="hist-dot yellow" title="${item.name}: ${cnt}/${tgt}">◐</span>`;
         return `<span class="hist-dot red" title="${item.name}: 未服">✗</span>`;
       }).join("");
 
-      return `<div class="hist-row" data-day-index="${i}" title="点击查看详情">
+      const idx = offset + i;
+      return `<div class="hist-row" data-day-index="${idx}" title="点击查看详情">
         <div class="hist-date"><strong>${dateLabel}</strong><span>${fullDate}${day.isWorkout ? " 🏋️" : ""}</span></div>
         <div class="hist-col"><span class="hist-label">💧</span><span class="hist-val">${day.waterTotal}ml</span>${waterBar}<span class="hist-pct">${waterPct}%</span></div>
         <div class="hist-col"><span class="hist-label">💚</span>${medItems || '<span class="hist-empty">—</span>'}</div>
@@ -1028,6 +1114,24 @@ async function loadHistory() {
         <div class="hist-col"><span class="hist-label">🧻</span>${toiletItems(day.toiletRecs) || '<span class="hist-empty">—</span>'}</div>
       </div>`;
     }).join("");
+
+    const loadMoreBtn = dayData.length >= HISTORY_PAGE_SIZE
+      ? '<div class="hist-load-more"><button class="text-button" id="histLoadMoreBtn" type="button">加载更多...</button></div>'
+      : '<div class="hist-end">已加载全部记录</div>';
+
+    if (more) {
+      // 移除旧按钮，追加新数据+新按钮
+      const oldBtn = E.historyContent.querySelector(".hist-load-more");
+      const oldEnd = E.historyContent.querySelector(".hist-end");
+      if (oldBtn) oldBtn.remove();
+      if (oldEnd) oldEnd.remove();
+      E.historyContent.insertAdjacentHTML("beforeend", html + loadMoreBtn);
+    } else {
+      E.historyContent.innerHTML = html + loadMoreBtn;
+    }
+    // 绑定加载更多按钮
+    const btn = E.historyContent.querySelector("#histLoadMoreBtn");
+    if (btn) btn.addEventListener("click", () => loadHistory(true));
   } catch (e) {
     E.historyContent.innerHTML = `<div class="empty-state">加载失败：${toFriendlyError(e)}</div>`;
   }
@@ -1060,53 +1164,14 @@ function renderDayDetail(day) {
       }).join("")
     : '<div class="detail-empty">这一天没有饮水记录</div>';
 
-  let medItems = day.medRecs?.length > 0
-    ? [...day.medRecs].sort((a, b) => {
-        const ta = a.recordedAt?.toDate?.() ?? new Date(0);
-        const tb = b.recordedAt?.toDate?.() ?? new Date(0);
-        return tb - ta;
-      }).map(r => {
-        const t = r.recordedAt?.toDate?.() ?? new Date();
-        const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-        const cnt = r.count || 0;
-        const full = getFullList("medicine"); const item = full.find(s => s.name === r.name);
-        const target = item?.targetCount || 1; const done = cnt >= target;
-        const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
-        const txt = done ? `✓ ${cnt}/${target}` : (cnt > 0 ? `${cnt}/${target}` : "未服");
-        return `<div class="detail-item"><span class="detail-dot ${cls}">💊</span><span class="detail-name">${esc(r.name)}</span><span class="detail-dosage">${esc(r.dosage || "")}</span><span class="detail-time">${td}</span><strong class="detail-val detail-status-${cls}">${txt}</strong></div>`;
-      }).join("")
-    : '<div class="detail-empty">这一天没有药物记录</div>';
+  const medHtml = renderDayDetailItemHTML("medicine", day.medRecs);
+  let medItems = medHtml || '<div class="detail-empty">这一天没有药物记录</div>';
 
-  let suppItems = day.suppRecs?.length > 0
-    ? [...day.suppRecs].sort((a, b) => {
-        const ta = a.recordedAt?.toDate?.() ?? new Date(0);
-        const tb = b.recordedAt?.toDate?.() ?? new Date(0);
-        return tb - ta;
-      }).map(r => {
-        const t = r.recordedAt?.toDate?.() ?? new Date();
-        const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-        const cnt = r.count || 0;
-        const full = getFullList("supplement"); const item = full.find(s => s.name === r.name);
-        const target = item?.targetCount || 1; const done = cnt >= target;
-        const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
-        const txt = done ? `✓ ${cnt}/${target}` : (cnt > 0 ? `${cnt}/${target}` : "未服");
-        return `<div class="detail-item"><span class="detail-dot ${cls}">💊</span><span class="detail-name">${esc(r.name)}</span><span class="detail-dosage">${esc(r.dosage || "")}</span><span class="detail-time">${td}</span><strong class="detail-val detail-status-${cls}">${txt}</strong></div>`;
-      }).join("")
-    : '<div class="detail-empty">这一天没有补剂记录</div>';
+  const suppHtml = renderDayDetailItemHTML("supplement", day.suppRecs);
+  let suppItems = suppHtml || '<div class="detail-empty">这一天没有补剂记录</div>';
 
-  let toiletItemsHtml = day.toiletRecs?.length > 0
-    ? [...day.toiletRecs].sort((a, b) => {
-        const ta = a.recordedAt?.toDate?.() ?? new Date(0);
-        const tb = b.recordedAt?.toDate?.() ?? new Date(0);
-        return tb - ta;
-      }).map(r => {
-        const t = r.recordedAt?.toDate?.() ?? new Date();
-        const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-        const icon = r.type === "big" ? TOILET_SVG.bigSmall : TOILET_SVG.smallSmall;
-        const label = r.type === "big" ? "大号" : "小号";
-        return `<div class="detail-item"><span class="detail-dot">${icon}</span><span class="detail-name">${label}</span><span class="detail-time">${td}</span></div>`;
-      }).join("")
-    : '<div class="detail-empty">这一天没有厕所记录</div>';
+  const toiletHtml = renderDayDetailItemHTML("toilet", day.toiletRecs);
+  let toiletItemsHtml = toiletHtml || '<div class="detail-empty">这一天没有厕所记录</div>';
 
   E.historyContent.innerHTML = `
     <div class="detail-header">
@@ -1133,5 +1198,24 @@ function showToast(m, undo) {
 }
 
 function hideToast() { E.toast.classList.remove("show"); }
+
+function exportData() {
+  try {
+    const raw = localStorage.getItem("health_tracker_data");
+    const data = raw ? JSON.parse(raw) : { records: {}, profile: {}, workoutDays: {} };
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `健康追踪_数据备份_${toDateKey(new Date())}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("数据已导出", false);
+    E.profileDialog.close();
+  } catch (e) {
+    showToast("导出失败", false);
+  }
+}
 
 initialize();
