@@ -4,9 +4,6 @@
   "private": true,
   "type": "module",
   "description": "每日健康追踪 — 饮水/药物/补剂记录 PWA",
-  "dependencies": {
-    "@ljoukov/firebase-admin-cloudflare": "^0.0.2"
-  },
   "devDependencies": {
     "wrangler": "^4.0.0"
   }
