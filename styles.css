@@ -891,7 +891,9 @@ dialog label {
   }
 
   .delete-record {
-    display: none;
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
   }
 }
 
@@ -1370,6 +1372,99 @@ dialog label {
 .supplement-status.missed {
   background: #fff0ef;
   color: var(--red);
+}
+
+/* ---- 厕所记录 ---- */
+.toilet-section {
+  margin-top: 38px;
+}
+
+.toilet-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.toilet-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 22px 18px 18px;
+  border: 2px solid rgba(23, 61, 58, 0.06);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10px 30px rgba(27, 78, 71, 0.06);
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.toilet-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 38px rgba(27, 78, 71, 0.11);
+}
+
+.toilet-btn:active {
+  transform: scale(0.97);
+}
+
+.toilet-emoji {
+  font-size: 40px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.toilet-btn:hover .toilet-emoji {
+  transform: scale(1.15);
+}
+
+.toilet-btn strong {
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.toilet-add {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mint-100);
+  color: var(--mint-700);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.big-btn {
+  border-left: 4px solid #d84f46;
+}
+
+.big-btn:hover {
+  border-color: #d84f46;
+  background: rgba(255, 240, 239, 0.4);
+}
+
+.small-btn {
+  border-left: 4px solid #428fcb;
+}
+
+.small-btn:hover {
+  border-color: #428fcb;
+  background: rgba(227, 240, 251, 0.4);
+}
+
+.toilet-dot {
+  font-size: 20px;
+}
+
+.toilet-history-item {
+  grid-template-columns: 42px 1fr auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
