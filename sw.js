@@ -1,16 +1,16 @@
 // Service Worker for 每日健康追踪 — offline support
 const CACHE_NAME = "health-tracker-v1";
 const APP_SHELL = [
-  "/",
-  "/index.html",
-  "/styles.css",
-  "/app.js",
-  "/js/config.js",
-  "/js/utils.js",
-  "/js/storage.js",
-  "/manifest.json",
-  "/icons/icon-192.svg",
-  "/icons/icon-512.svg",
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./js/config.js",
+  "./js/utils.js",
+  "./js/storage.js",
+  "./manifest.json",
+  "./icons/icon-192.svg",
+  "./icons/icon-512.svg",
 ];
 
 // Install: precache app shell
@@ -72,7 +72,7 @@ self.addEventListener("fetch", (event) => {
       }).catch(() => {
         // Offline fallback: return index.html for navigation requests
         if (event.request.mode === "navigate") {
-          return caches.match("/index.html");
+          return caches.match("./index.html");
         }
         return new Response("Offline", { status: 503 });
       });
