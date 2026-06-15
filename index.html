@@ -44,14 +44,8 @@
           <h1>今天喝水了吗？</h1>
         </div>
         <div class="account-actions">
-          <span class="user-email" id="userEmail"></span>
-          <button class="logout-button" id="logoutButton" type="button">退出</button>
-          <button class="logout-button" id="historyButton" type="button" style="background:rgba(255,255,255,0.7);">📜 历史</button>
-          <button class="icon-button" id="goalButton" type="button" aria-label="设置每日目标">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path>
-              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.42 1.42-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2v-.09A1.7 1.7 0 0 0 12.35 18a1.7 1.7 0 0 0-1.88.34l-.06.06L9 16.98l.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.03H7.5v-2h.34A1.7 1.7 0 0 0 9.4 10.94a1.7 1.7 0 0 0-.34-1.88L9 9l1.42-1.42.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V6h2v.42a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.78 9l-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H21v2h-.06A1.7 1.7 0 0 0 19.4 15Z"></path>
-            </svg>
+          <button class="avatar-button" id="avatarButton" type="button" aria-label="个人主页" title="个人主页">
+            <span class="avatar-img" id="avatarImg"></span>
           </button>
         </div>
       </header>
@@ -324,6 +318,72 @@
 
     </main>
 
+    <!-- ========== 个人主页 ========== -->
+    <dialog id="profileDialog">
+      <div class="profile-content">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">PROFILE</p>
+            <h2>个人主页</h2>
+          </div>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+        </div>
+
+        <div class="profile-avatar-section">
+          <div class="profile-avatar" id="profileAvatar"></div>
+          <button class="text-button" id="editAvatarButton" type="button">更换头像</button>
+        </div>
+
+        <div class="profile-info">
+          <span class="profile-email" id="profileEmail"></span>
+        </div>
+
+        <div class="profile-actions">
+          <button class="profile-action-btn" id="profileGoalButton" type="button">
+            <span class="profile-action-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.42 1.42-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2v-.09A1.7 1.7 0 0 0 12.35 18a1.7 1.7 0 0 0-1.88.34l-.06.06L9 16.98l.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.03H7.5v-2h.34A1.7 1.7 0 0 0 9.4 10.94a1.7 1.7 0 0 0-.34-1.88L9 9l1.42-1.42.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V6h2v.42a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.78 9l-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H21v2h-.06A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+            </span>
+            <span>每日饮水目标</span>
+            <span class="profile-action-val" id="profileGoalVal">2000 ml</span>
+          </button>
+          <button class="profile-action-btn" id="profileHistoryButton" type="button">
+            <span class="profile-action-icon">📜</span>
+            <span>历史记录</span>
+            <span class="profile-action-arrow">›</span>
+          </button>
+          <button class="profile-action-btn profile-logout-btn" id="profileLogoutButton" type="button">
+            <span class="profile-action-icon">🚪</span>
+            <span>退出登录</span>
+            <span class="profile-action-arrow">›</span>
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- ========== 头像编辑弹窗 ========== -->
+    <dialog id="avatarDialog">
+      <form method="dialog" id="avatarForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">AVATAR</p>
+            <h2>更换头像</h2>
+          </div>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+        </div>
+        <div class="avatar-preview-row">
+          <span class="avatar-preview" id="avatarPreview"></span>
+          <span class="avatar-preview-label">预览</span>
+        </div>
+        <label>背景颜色</label>
+        <div class="avatar-colors" id="avatarColors">
+          <!-- 动态渲染 -->
+        </div>
+        <label for="avatarUrlInput">或使用图片链接</label>
+        <input class="text-field" id="avatarUrlInput" type="url" placeholder="https://example.com/avatar.jpg" />
+        <button class="primary-button" id="avatarSaveButton" type="button">保存头像</button>
+      </form>
+    </dialog>
+
     <dialog id="goalDialog">
       <form method="dialog" id="goalForm">
         <div class="dialog-heading">
@@ -399,6 +459,7 @@
           <option value="workout">仅健身日</option>
         </select>
         <button class="primary-button" value="default" type="submit">添加补剂</button>
+        <button class="danger-button" id="deleteSupplementBtn" type="button" style="display:none;margin-top:8px">删除此补剂</button>
       </form>
     </dialog>
 
@@ -433,6 +494,7 @@
           <option value="workout">仅健身日</option>
         </select>
         <button class="primary-button" value="default" type="submit">添加药物</button>
+        <button class="danger-button" id="deleteMedicineBtn" type="button" style="display:none;margin-top:8px">删除此药物</button>
       </form>
     </dialog>
 
