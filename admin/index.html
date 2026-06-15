@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0f756f" />
+  <title>管理面板 — 每日健康追踪</title>
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ========== 登录门 ========== -->
+<section class="admin-login-gate" id="loginGate">
+  <div class="login-card">
+    <div class="login-brand">
+      <span class="brand-drop">●</span>
+      <p class="eyebrow">ADMIN PANEL</p>
+      <h1>健康追踪<br />管理后台</h1>
+    </div>
+    <form class="login-form" id="loginForm">
+      <label class="text-field">
+        <span>管理员密钥</span>
+        <input type="password" id="apiKeyInput" placeholder="请输入 Admin API Key" autocomplete="off" />
+      </label>
+      <p class="login-error" id="loginError" hidden></p>
+      <button type="submit" class="primary-button" id="loginBtn">进入管理面板</button>
+    </form>
+    <p class="login-hint">密钥仅保存在当前浏览器会话中，关闭页面后需重新输入。</p>
+  </div>
+</section>
+
+<!-- ========== 主界面 ========== -->
+<main class="admin-shell" id="appShell" hidden>
+
+  <!-- 顶部导航 -->
+  <header class="admin-topbar">
+    <div class="topbar-left">
+      <span class="brand-drop small">●</span>
+      <h1>管理后台</h1>
+    </div>
+    <nav class="topbar-nav">
+      <button class="nav-btn active" data-view="dashboard" id="navDashboard">📊 仪表盘</button>
+      <button class="nav-btn" data-view="users" id="navUsers">👥 用户列表</button>
+    </nav>
+    <div class="topbar-right">
+      <button class="text-button" id="logoutBtn" title="退出">退出</button>
+    </div>
+  </header>
+
+  <!-- ===== Dashboard 视图 ===== -->
+  <section class="admin-view" id="viewDashboard">
+    <div class="stat-cards" id="statCards">
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="statTotalUsers">-</div><div class="stat-label">总用户数</div></div>
+      <div class="stat-card"><div class="stat-icon">🟢</div><div class="stat-value" id="statActiveUsers">-</div><div class="stat-label">7日活跃用户</div></div>
+      <div class="stat-card"><div class="stat-icon">💧</div><div class="stat-value" id="statWater">-</div><div class="stat-label">7日饮水记录</div></div>
+      <div class="stat-card"><div class="stat-icon">💚</div><div class="stat-value" id="statMedicine">-</div><div class="stat-label">7日药物记录</div></div>
+      <div class="stat-card"><div class="stat-icon">💊</div><div class="stat-value" id="statSupplement">-</div><div class="stat-label">7日补剂记录</div></div>
+      <div class="stat-card"><div class="stat-icon">🚽</div><div class="stat-value" id="statToilet">-</div><div class="stat-label">7日如厕记录</div></div>
+    </div>
+
+    <div class="chart-section">
+      <h2>近 7 天活跃趋势</h2>
+      <div class="chart-container">
+        <canvas id="activityChart"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <h2>近 7 天记录分布</h2>
+      <div class="chart-container">
+        <canvas id="recordsChart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 用户列表视图 ===== -->
+  <section class="admin-view" id="viewUsers" hidden>
+    <div class="view-toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="userSearch" placeholder="搜索用户邮箱或 UID..." />
+      </div>
+      <span class="result-count" id="userCount"></span>
+    </div>
+
+    <div class="user-table-wrap">
+      <table class="user-table">
+        <thead>
+          <tr>
+            <th>用户</th>
+            <th>每日目标</th>
+            <th>最后活跃</th>
+            <th>总记录数</th>
+            <th>注册时间</th>
+          </tr>
+        </thead>
+        <tbody id="userTableBody">
+          <tr><td colspan="5" class="empty-cell">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="userPagination" hidden>
+      <button class="secondary-button" id="userPrevPage" disabled>上一页</button>
+      <span class="page-info" id="userPageInfo"></span>
+      <button class="secondary-button" id="userNextPage">下一页</button>
+    </div>
+  </section>
+
+  <!-- ===== 用户详情视图 ===== -->
+  <section class="admin-view" id="viewUserDetail" hidden>
+    <div class="detail-header">
+      <button class="text-button back-btn" id="backToUsers">← 返回用户列表</button>
+      <h2 id="detailTitle">用户详情</h2>
+    </div>
+
+    <!-- 用户档案卡片 -->
+    <div class="detail-profile card" id="detailProfile">
+      <!-- JS 动态填充 -->
+    </div>
+
+    <!-- 记录查看 -->
+    <div class="detail-records card">
+      <div class="records-toolbar">
+        <h3>记录数据</h3>
+        <div class="date-range">
+          <input type="date" id="recordStartDate" />
+          <span>至</span>
+          <input type="date" id="recordEndDate" />
+          <button class="secondary-button" id="refreshRecords">查询</button>
+        </div>
+      </div>
+
+      <!-- 记录类型标签 -->
+      <div class="records-tabs" id="recordsTabs">
+        <button class="rec-tab active" data-type="water">💧 饮水</button>
+        <button class="rec-tab" data-type="medicine">💚 药物</button>
+        <button class="rec-tab" data-type="supplement">💊 补剂</button>
+        <button class="rec-tab" data-type="toilet">🚽 如厕</button>
+        <button class="rec-tab" data-type="workout">🏋️ 健身</button>
+      </div>
+
+      <div class="records-table-wrap">
+        <table class="records-table">
+          <thead id="recordsTableHead"></thead>
+          <tbody id="recordsTableBody">
+            <tr><td colspan="5" class="empty-cell">请选择日期范围后查询</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="admin.js" type="module"></script>
+</body>
+</html>
