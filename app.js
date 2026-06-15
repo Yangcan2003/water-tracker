@@ -439,10 +439,12 @@ function renderToiletHistory() {
   }
   E.toiletHistoryList.innerHTML = [...toiletRecords].reverse().map(r => {
     const t = new Date(r.recordedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const emoji = r.type === "big" ? "🚽" : "🚻";
+    const icon = r.type === "big"
+      ? "🚽"
+      : `<svg viewBox="0 0 32 32" fill="none" style="width:22px;height:22px;display:block"><rect x="5" y="2" width="22" height="3.5" rx="1.75" fill="currentColor"/><path d="M8 5.5 C4 12 6 24 13 26 C15.5 27.5 16.5 27.5 19 26 C26 24 28 12 24 5.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="22" r="2.5" fill="currentColor" opacity="0.6"/></svg>`;
     const label = r.type === "big" ? "大号" : "小号";
     return `<article class="history-item toilet-history-item">
-      <span class="history-dot toilet-dot">${emoji}</span>
+      <span class="history-dot toilet-dot">${icon}</span>
       <div class="history-info"><strong>${label}</strong><span>${t}</span></div>
       <button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button>
     </article>`;
@@ -767,7 +769,7 @@ function toiletItems(toiletRecs) {
   const small = toiletRecs.filter(r => r.type === "small").length;
   const parts = [];
   if (big > 0) parts.push(`<span class="hist-dot" style="background:#fff0ef;color:#d84f46;font-size:10px" title="大号 ×${big}">🚽</span>`);
-  if (small > 0) parts.push(`<span class="hist-dot" style="background:#e3f0fb;color:#428fcb;font-size:10px" title="小号 ×${small}">🚻</span>`);
+  if (small > 0) parts.push(`<span class="hist-dot" style="background:#e3f0fb;color:#428fcb;font-size:10px;padding:2px" title="小号 ×${small}"><svg viewBox="0 0 32 32" fill="none" style="width:14px;height:14px;display:block"><rect x="5" y="2" width="22" height="3.5" rx="1.75" fill="currentColor"/><path d="M8 5.5 C4 12 6 24 13 26 C15.5 27.5 16.5 27.5 19 26 C26 24 28 12 24 5.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="22" r="2.5" fill="currentColor" opacity="0.6"/></svg></span>`);
   return parts.join("");
 }
 

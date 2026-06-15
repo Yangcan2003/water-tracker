@@ -1417,6 +1417,12 @@ dialog label {
   transition: transform 0.2s ease;
 }
 
+.toilet-emoji svg {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+
 .toilet-btn:hover .toilet-emoji {
   transform: scale(1.15);
 }
