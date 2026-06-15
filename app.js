@@ -996,8 +996,7 @@ function renderItemList(type) {
 
   // 提示
   const hint = isMed ? E.medicineHint : E.supplementHint;
-  const weekdayLabel = isWeekday(selectedDate) ? "工作日" : "周末";
-  hint.textContent = `点击卡片 +1 · ${weekdayLabel}${isWorkoutDay ? " · 健身日" : ""} · 灰色=今日跳过`;
+  hint.textContent = `点击卡片 +1 · 灰色=今日跳过`;
 
   // 历史
   const recs = isMed ? medicineRecords : supplementRecords;
