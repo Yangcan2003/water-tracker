@@ -441,7 +441,7 @@ function renderToiletHistory() {
     const t = new Date(r.recordedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
     const icon = r.type === "big"
       ? "🚽"
-      : `<svg viewBox="0 0 32 32" fill="none" style="width:22px;height:22px;display:block"><rect x="5" y="2" width="22" height="3.5" rx="1.75" fill="currentColor"/><path d="M8 5.5 C4 12 6 24 13 26 C15.5 27.5 16.5 27.5 19 26 C26 24 28 12 24 5.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="22" r="2.5" fill="currentColor" opacity="0.6"/></svg>`;
+      : `<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px;display:block"><path d="M70 44 Q120 28 170 44 Q185 50 182 72 L164 178 Q158 214 120 218 Q82 214 76 178 L58 72 Q55 50 70 44Z" fill="#f0f3f8" stroke="#cfd6df" stroke-width="4"/><path d="M88 72 Q120 60 152 72 Q162 76 160 91 L148 158 Q144 179 120 181 Q96 179 92 158 L80 91 Q78 76 88 72Z" fill="#e6eaf0" stroke="#c8ced8" stroke-width="3"/><ellipse cx="120" cy="168" rx="17" ry="13" fill="#f6f7f9" stroke="#aab2bd" stroke-width="2"/><circle cx="114" cy="165" r="2.5" fill="#666"/><circle cx="120" cy="164" r="2.5" fill="#666"/><circle cx="126" cy="165" r="2.5" fill="#666"/><circle cx="115" cy="172" r="2.5" fill="#666"/><circle cx="122" cy="172" r="2.5" fill="#666"/><circle cx="120" cy="178" r="2.5" fill="#666"/><rect x="109" y="24" width="22" height="22" rx="5" fill="#d7dbe1" stroke="#8f96a1" stroke-width="2"/><ellipse cx="120" cy="24" rx="11" ry="5" fill="#f6f7f9" stroke="#a4abb5" stroke-width="1.5"/></svg>`;
     const label = r.type === "big" ? "大号" : "小号";
     return `<article class="history-item toilet-history-item">
       <span class="history-dot toilet-dot">${icon}</span>
@@ -769,7 +769,7 @@ function toiletItems(toiletRecs) {
   const small = toiletRecs.filter(r => r.type === "small").length;
   const parts = [];
   if (big > 0) parts.push(`<span class="hist-dot" style="background:#fff0ef;color:#d84f46;font-size:10px" title="大号 ×${big}">🚽</span>`);
-  if (small > 0) parts.push(`<span class="hist-dot" style="background:#e3f0fb;color:#428fcb;font-size:10px;padding:2px" title="小号 ×${small}"><svg viewBox="0 0 32 32" fill="none" style="width:14px;height:14px;display:block"><rect x="5" y="2" width="22" height="3.5" rx="1.75" fill="currentColor"/><path d="M8 5.5 C4 12 6 24 13 26 C15.5 27.5 16.5 27.5 19 26 C26 24 28 12 24 5.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="22" r="2.5" fill="currentColor" opacity="0.6"/></svg></span>`);
+  if (small > 0) parts.push(`<span class="hist-dot" style="background:#e3f0fb;padding:3px" title="小号 ×${small}"><svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;display:block"><path d="M70 44 Q120 28 170 44 Q185 50 182 72 L164 178 Q158 214 120 218 Q82 214 76 178 L58 72 Q55 50 70 44Z" fill="#f0f3f8" stroke="#cfd6df" stroke-width="5"/><path d="M88 72 Q120 60 152 72 Q162 76 160 91 L148 158 Q144 179 120 181 Q96 179 92 158 L80 91 Q78 76 88 72Z" fill="#e6eaf0" stroke="#c8ced8" stroke-width="3"/><ellipse cx="120" cy="168" rx="15" ry="11" fill="#f6f7f9" stroke="#aab2bd" stroke-width="2"/><rect x="109" y="24" width="22" height="22" rx="5" fill="#d7dbe1" stroke="#8f96a1" stroke-width="2"/><ellipse cx="120" cy="24" rx="11" ry="5" fill="#f6f7f9" stroke="#a4abb5" stroke-width="1.5"/></svg></span>`);
   return parts.join("");
 }
 
