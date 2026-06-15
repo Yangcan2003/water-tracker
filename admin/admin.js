@@ -87,8 +87,16 @@ async function handleLogin(e) {
   E.loginBtn.textContent = "验证中...";
   E.loginError.hidden = true;
 
+  // 10 秒超时
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+
   try {
-    const res = await fetch(`/api/admin/dashboard?key=${encodeURIComponent(key)}`);
+    const res = await fetch(`/api/admin/dashboard?key=${encodeURIComponent(key)}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
     if (res.status === 401) {
       E.loginError.textContent = "密钥无效，请重试";
       E.loginError.hidden = false;
@@ -96,13 +104,18 @@ async function handleLogin(e) {
       E.loginBtn.textContent = "进入管理面板";
       return;
     }
-    if (!res.ok) throw new Error("服务器错误");
+    if (!res.ok) throw new Error("服务器错误: " + res.status);
     // 密钥有效
     apiKey = key;
     sessionStorage.setItem("admin_key", key);
     enterApp();
   } catch (e) {
-    E.loginError.textContent = "连接失败: " + e.message;
+    clearTimeout(timer);
+    if (e.name === "AbortError") {
+      E.loginError.textContent = "连接超时，请检查网络后重试";
+    } else {
+      E.loginError.textContent = "连接失败: " + e.message;
+    }
     E.loginError.hidden = false;
     E.loginBtn.disabled = false;
     E.loginBtn.textContent = "进入管理面板";
@@ -129,18 +142,30 @@ function logout() {
 
 // ========== API 调用 ==========
 async function adminFetch(path) {
-  const res = await fetch(path, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  if (res.status === 401) {
-    logout();
-    throw new Error("未授权");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(path, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.status === 401) {
+      logout();
+      throw new Error("未授权");
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === "AbortError") {
+      throw new Error("请求超时");
+    }
+    throw e;
   }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${res.status}`);
-  }
-  return res.json();
 }
 
 // ========== 视图切换 ==========
