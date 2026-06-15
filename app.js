@@ -975,6 +975,14 @@ function renderItemList(type) {
 }
 
 // ========== 药物/补剂渲染辅助 ==========
+/** 将 Firestore Timestamp / Date / ISO 字符串统一转为 Date */
+function toJSDate(v) {
+  if (!v) return new Date();
+  if (v?.toDate) return v.toDate();       // Firestore Timestamp
+  if (v instanceof Date) return v;         // 已是 Date
+  return new Date(v);                      // ISO 字符串
+}
+
 function renderItemHistoryHTML(type, isMed, fullList, label) {
   const recs = isMed ? medicineRecords : supplementRecords;
   const countEl = isMed ? E.medicineRecordCount : E.supplementRecordCount;
@@ -1011,11 +1019,11 @@ function renderDayDetailItemHTML(type, recs) {
   const isSupp = type === "supplement";
   const fullList = isMed ? getFullList("medicine") : isSupp ? getFullList("supplement") : null;
   return [...recs].sort((a, b) => {
-    const ta = a.recordedAt?.toDate?.() ?? new Date(0);
-    const tb = b.recordedAt?.toDate?.() ?? new Date(0);
+    const ta = toJSDate(a.recordedAt);
+    const tb = toJSDate(b.recordedAt);
     return tb - ta;
   }).map(r => {
-    const t = r.recordedAt?.toDate?.() ?? new Date();
+    const t = toJSDate(r.recordedAt);
     const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
     if (isToilet) {
       const icon = r.type === "big" ? TOILET_SVG.bigSmall : TOILET_SVG.smallSmall;
@@ -1153,12 +1161,8 @@ function renderDayDetail(day) {
   const fullDate = d.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
 
   let waterItems = day.waterRecs?.length > 0
-    ? [...day.waterRecs].sort((a, b) => {
-        const ta = a.recordedAt?.toDate?.() ?? new Date(0);
-        const tb = b.recordedAt?.toDate?.() ?? new Date(0);
-        return tb - ta;
-      }).map(r => {
-        const t = r.recordedAt?.toDate?.() ?? new Date();
+    ? [...day.waterRecs].sort((a, b) => toJSDate(b.recordedAt) - toJSDate(a.recordedAt)).map(r => {
+        const t = toJSDate(r.recordedAt);
         const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
         return `<div class="detail-item"><span class="detail-dot">◒</span><span class="detail-name">${esc(r.source || "饮水")}</span><span class="detail-time">${td}</span><strong class="detail-val">+${r.amount} ml</strong></div>`;
       }).join("")

@@ -449,13 +449,14 @@ class StorageManager {
     return dates.map(dk => {
       const day = data.records[dk] || { water: [], medicine: [], supplement: [], toilet: [] };
       const waterTotal = day.water.reduce((s, r) => s + (r.amount || 0), 0);
+      const toDate = (r) => ({ ...r, recordedAt: new Date(r.recordedAt) });
       return {
         dateKey: dk,
         waterTotal,
-        waterRecs: day.water,
-        medRecs: day.medicine,
-        suppRecs: day.supplement,
-        toiletRecs: day.toilet,
+        waterRecs: day.water.map(toDate),
+        medRecs: day.medicine.map(toDate),
+        suppRecs: day.supplement.map(toDate),
+        toiletRecs: day.toilet.map(toDate),
         isWorkout: data.workoutDays[dk] || false,
       };
     });
