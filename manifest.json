@@ -2,7 +2,7 @@
   "name": "每日健康追踪",
   "short_name": "健康追踪",
   "description": "饮水、药物、补剂与每日健康记录",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#edf5f1",
   "theme_color": "#168d84",
