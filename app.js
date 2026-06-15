@@ -761,7 +761,8 @@ function getCfg(type) {
 }
 function getFullList(type) {
   const cfg = getCfg(type); const seen = new Set(); const list = [];
-  for (const s of [...cfg.defs, ...cfg.userList]) { if (!seen.has(s.name)) { seen.add(s.name); list.push(s); } }
+  // userList 优先，确保用户编辑（剂量等）能覆盖默认配置
+  for (const s of [...cfg.userList, ...cfg.defs]) { if (!seen.has(s.name)) { seen.add(s.name); list.push(s); } }
   return list;
 }
 function getCount(type, name) { const r = getCfg(type).recs.find(r => r.name === name); return r ? (r.count || 0) : 0; }
@@ -912,7 +913,9 @@ async function editItem(type, oldName, newName, newDosage, newTarget, newSchedul
   const isDef = defs.some(d => d.name === oldName);
   let newList;
   if (isDef) {
-    newList = [...arr.filter(s => s.name !== oldName), { name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule, emoji: "💊" }];
+    const origDef = defs.find(d => d.name === oldName);
+    const origEmoji = origDef ? origDef.emoji : (arr.find(s => s.name === oldName) || {}).emoji || "💊";
+    newList = [...arr.filter(s => s.name !== oldName), { name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule, emoji: origEmoji }];
   } else {
     newList = arr.map(s => s.name === oldName ? { ...s, name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule } : s);
   }
