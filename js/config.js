@@ -32,5 +32,25 @@ export const DEFAULT_SUPPLEMENTS = [
   { name: "肌酸", dosage: "5g/次", targetCount: 1, schedule: "workout_weekday", emoji: "💪" },
 ];
 
+// 默认水杯
+export const DEFAULT_CUPS = [
+  { name: "我的水杯", amount: 490 },
+  { name: "农夫山泉天然水", amount: 550 },
+  { name: "农夫山泉纯净水", amount: 550 },
+];
+
+// 默认提醒设置
+export const DEFAULT_REMINDER = {
+  enabled: false,
+  times: ["09:00", "14:00", "18:00"],
+};
+
+// 默认设置
+export const DEFAULT_SETTINGS = {
+  soundEnabled: true,
+  vibrationEnabled: true,
+  language: "zh",
+};
+
 // 本地存储键名
 export const LS_KEY = "health_tracker_data";

@@ -4,9 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#168d84" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudflare.com https://cdn.jsdelivr.net; font-src 'self' data:; manifest-src 'self'; worker-src 'self';" />
     <title>每日健康追踪</title>
     <link rel="stylesheet" href="styles.css" />
-    <link rel="manifest" href="manifest.json?v=2" />
+    <link rel="manifest" href="manifest.json?v=3" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("./sw.js").catch(function() {});
@@ -110,6 +112,7 @@
               <h2>喝了什么？</h2>
             </div>
             <button class="text-button" id="customButton" type="button">+ 自定义</button>
+            <button class="text-button" id="editCupsBtn" type="button" style="margin-left:4px">编辑水杯</button>
           </div>
 
           <div class="source-grid">
@@ -347,6 +350,21 @@
             <span>导出数据</span>
             <span class="profile-action-arrow">›</span>
           </button>
+          <button class="profile-action-btn" id="profileStatsButton" type="button">
+            <span class="profile-action-icon">📊</span>
+            <span>数据统计</span>
+            <span class="profile-action-arrow">›</span>
+          </button>
+          <button class="profile-action-btn" id="profileReminderButton" type="button">
+            <span class="profile-action-icon">⏰</span>
+            <span>饮水提醒</span>
+            <span class="profile-action-val" id="profileReminderStatus"></span>
+          </button>
+          <button class="profile-action-btn" id="profileSettingsButton" type="button">
+            <span class="profile-action-icon">⚙️</span>
+            <span>设置</span>
+            <span class="profile-action-arrow">›</span>
+          </button>
           <button class="profile-action-btn profile-logout-btn" id="profileLogoutButton" type="button">
             <span class="profile-action-icon">🚪</span>
             <span>退出登录</span>
@@ -400,6 +418,21 @@
           <button type="button" data-goal="2500">2500</button>
           <button type="button" data-goal="3000">3000</button>
         </div>
+        <details class="smart-goal-section">
+          <summary>🧮 智能推荐（根据体重计算）</summary>
+          <div class="smart-goal-form">
+            <label for="smartWeight">体重 (kg)</label>
+            <input class="text-field" id="smartWeight" type="number" min="30" max="200" step="0.5" value="65" placeholder="输入体重" />
+            <label for="smartActivity">活动等级</label>
+            <select class="text-field" id="smartActivity">
+              <option value="low">低 — 久坐少动（×30 ml）</option>
+              <option value="mid" selected>中 — 偶尔运动（×35 ml）</option>
+              <option value="high">高 — 经常运动（×40~45 ml）</option>
+            </select>
+            <div class="smart-result" id="smartResult">推荐目标：<strong>2275 ml</strong></div>
+            <button class="text-button" id="smartApplyBtn" type="button">应用推荐值</button>
+          </div>
+        </details>
         <button class="primary-button" value="default" type="submit">保存目标</button>
       </form>
     </dialog>
@@ -509,6 +542,111 @@
       </div>
     </dialog>
 
+    <!-- ========== 水杯编辑弹窗 ========== -->
+    <dialog id="cupDialog">
+      <form method="dialog" id="cupForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">CUSTOMIZE CUPS</p>
+            <h2>编辑水杯</h2>
+          </div>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+        </div>
+        <div id="cupList" class="cup-edit-list"></div>
+        <div class="cup-add-row">
+          <input class="text-field" id="newCupName" type="text" maxlength="20" placeholder="水杯名称" />
+          <div class="number-field">
+            <input id="newCupAmount" type="number" min="10" max="5000" step="10" value="300" />
+            <span>ml</span>
+          </div>
+          <button class="primary-button" id="addCupBtn" type="button" style="margin-top:0;padding:13px 18px">添加</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- ========== 统计弹窗 ========== -->
+    <dialog id="statsDialog">
+      <div class="dialog-heading" style="padding:28px 28px 0">
+        <div>
+          <p class="eyebrow">STATISTICS</p>
+          <h2>数据统计</h2>
+        </div>
+        <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+      </div>
+      <div style="padding:0 28px 28px">
+        <div class="stats-tabs">
+          <button class="stats-tab active" id="statsWeekTab" type="button">周视图</button>
+          <button class="stats-tab" id="statsMonthTab" type="button">月视图</button>
+        </div>
+        <div class="chart-container">
+          <canvas id="waterChart"></canvas>
+        </div>
+        <div class="chart-container" style="margin-top:18px">
+          <canvas id="complianceChart"></canvas>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- ========== 提醒设置弹窗 ========== -->
+    <dialog id="reminderDialog">
+      <form method="dialog" id="reminderForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">REMINDER</p>
+            <h2>饮水提醒</h2>
+          </div>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+        </div>
+        <div class="reminder-toggle-row">
+          <span>开启提醒</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="reminderEnabled" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div id="reminderTimesList" class="reminder-times-list"></div>
+        <button class="text-button" id="addReminderTimeBtn" type="button">+ 添加提醒时间</button>
+        <p class="cup-hint" style="margin-top:12px">需要浏览器通知权限。设置后每小时检查一次。</p>
+        <button class="primary-button" id="saveReminderBtn" type="button">保存设置</button>
+      </form>
+    </dialog>
+
+    <!-- ========== 设置弹窗 ========== -->
+    <dialog id="settingsDialog">
+      <div class="profile-content">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">SETTINGS</p>
+            <h2>设置</h2>
+          </div>
+          <button class="close-button" type="button" aria-label="关闭" onclick="this.closest('dialog').close()">×</button>
+        </div>
+        <div class="settings-list">
+          <div class="setting-row">
+            <span>🔊 音效反馈</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="soundEnabled" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <span>📳 震动反馈</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="vibrationEnabled" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <span>🌐 语言 Language</span>
+            <select class="text-field" id="languageSelect" style="width:auto;min-width:120px">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
     <!-- ========== 认证对话框 ========== -->
     <dialog id="authDialog">
       <div class="auth-dialog-content">
@@ -543,6 +681,25 @@
     <div class="toast" id="toast" role="status" aria-live="polite">
       <span id="toastText"></span>
       <button id="undoButton" type="button">撤销</button>
+    </div>
+
+    <!-- FAB 浮动快捷按钮 -->
+    <div class="fab-container" id="fabContainer">
+      <button class="fab-main" id="fabMain" type="button" aria-label="快速记录">+</button>
+      <div class="fab-menu" id="fabMenu">
+        <button class="fab-item" data-fab="water" type="button">
+          <span class="fab-icon">💧</span>
+          <span class="fab-label">喝水</span>
+        </button>
+        <button class="fab-item" data-fab="medicine" type="button">
+          <span class="fab-icon">💚</span>
+          <span class="fab-label">吃药</span>
+        </button>
+        <button class="fab-item" data-fab="supplement" type="button">
+          <span class="fab-icon">💊</span>
+          <span class="fab-label">补剂</span>
+        </button>
+      </div>
     </div>
 
     <script type="module" src="app.js"></script>
