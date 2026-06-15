@@ -439,7 +439,7 @@ function renderToiletHistory() {
   }
   E.toiletHistoryList.innerHTML = [...toiletRecords].reverse().map(r => {
     const t = new Date(r.recordedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const emoji = r.type === "big" ? "🚽" : "🚹";
+    const emoji = r.type === "big" ? "🚽" : "🚻";
     const label = r.type === "big" ? "大号" : "小号";
     return `<article class="history-item toilet-history-item">
       <span class="history-dot toilet-dot">${emoji}</span>
@@ -767,7 +767,7 @@ function toiletItems(toiletRecs) {
   const small = toiletRecs.filter(r => r.type === "small").length;
   const parts = [];
   if (big > 0) parts.push(`<span class="hist-dot" style="background:#fff0ef;color:#d84f46;font-size:10px" title="大号 ×${big}">🚽</span>`);
-  if (small > 0) parts.push(`<span class="hist-dot" style="background:#e3f0fb;color:#428fcb;font-size:10px" title="小号 ×${small}">🚹</span>`);
+  if (small > 0) parts.push(`<span class="hist-dot" style="background:#e3f0fb;color:#428fcb;font-size:10px" title="小号 ×${small}">🚻</span>`);
   return parts.join("");
 }
 
