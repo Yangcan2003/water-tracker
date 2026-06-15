@@ -19,6 +19,14 @@ let userMedicines = [], userSupplements = [];
 let currentEditItem = null;
 let isWorkoutDay = false;       // 当前选中日期是否是健身日
 let workoutDaysCache = {};      // dateKey → bool 缓存
+let historyDayData = [];        // 历史记录数据缓存
+let historyViewMode = "overview"; // "overview" | "detail"
+
+// 头像
+let avatarType = "default";     // "default" | "custom"
+let avatarColor = "#168d84";    // 默认头像背景色
+let avatarUrl = "";             // 自定义头像图片 URL
+const AVATAR_COLORS = ["#168d84","#d84f46","#428fcb","#e8923f","#8b5cf6","#ec4899","#14b8a6","#6366f1","#f43f5e","#0ea5e9"];
 
 // 预设药物
 const DEFAULT_MEDICINES = [
@@ -41,16 +49,21 @@ const E = {};
 function $(sel) { return document.querySelector(sel); }
 [
   "authShell","appShell","authForm","loginTab","registerTab","authEyebrow","authTitle",
-  "emailInput","passwordInput","authMessage","authSubmit","userEmail","logoutButton",
+  "emailInput","passwordInput","authMessage","authSubmit",
   "currentAmount","goalAmount","progressPercent","progressBar","progressMessage",
   "waterFill","waterWave","dateLabel","fullDate","datePicker","datePickerButton",
   "previousDay","nextDay","historyList","recordCount",
-  "goalButton","goalDialog","goalForm","goalInput",
+  "goalDialog","goalForm","goalInput",
   "customButton","customDialog","customForm","customName","customAmount",
   "toast","toastText","undoButton",
   "waterTab","medicineTab","supplementTab",
   "waterPanel","medicinePanel","supplementPanel",
-  "historyButton","historyDialog","historyContent",
+  "historyDialog","historyContent",
+  // 头像 & 个人主页
+  "avatarButton","avatarImg","profileDialog","profileAvatar","profileEmail",
+  "editAvatarButton","profileGoalButton","profileGoalVal",
+  "profileHistoryButton","profileLogoutButton",
+  "avatarDialog","avatarPreview","avatarColors","avatarUrlInput","avatarSaveButton",
   // 药物
   "medicineGrid","medicineTakenCount","medicineTotalCount","medicinePercent",
   "medicineRecordCount","medicineHistoryList","medicineHint",
@@ -62,7 +75,7 @@ function $(sel) { return document.querySelector(sel); }
   "supplementRecordCount","supplementHistoryList","supplementHint",
   "customSupplementButton","customSupplementDialog","customSupplementForm",
   "customSupplementName","customSupplementDosage","customSupplementTarget","customSupplementSchedule",
-  "supplementWorkoutToggle",
+  "supplementWorkoutToggle","deleteSupplementBtn","deleteMedicineBtn",
   // 厕所
   "toiletRecordCount","toiletHistoryList",
 ].forEach(id => { E[id] = $("#"+id); });
@@ -77,16 +90,22 @@ document.querySelectorAll("[data-goal]").forEach(btn => {
 E.loginTab.addEventListener("click", () => setAuthMode("login"));
 E.registerTab.addEventListener("click", () => setAuthMode("register"));
 E.authForm.addEventListener("submit", handleAuthSubmit);
-E.logoutButton.addEventListener("click", () => auth && signOut(auth));
-E.historyButton.addEventListener("click", () => { loadHistory(); E.historyDialog.showModal(); });
-E.goalButton.addEventListener("click", () => { E.goalInput.value = dailyGoal; E.goalDialog.showModal(); setTimeout(() => E.goalInput.select(), 50); });
+
+// 个人主页
+E.avatarButton.addEventListener("click", openProfile);
+E.profileGoalButton.addEventListener("click", () => { E.profileDialog.close(); E.goalInput.value = dailyGoal; E.goalDialog.showModal(); setTimeout(() => E.goalInput.select(), 50); });
+E.profileHistoryButton.addEventListener("click", () => { E.profileDialog.close(); loadHistory(); E.historyDialog.showModal(); });
+E.profileLogoutButton.addEventListener("click", () => { E.profileDialog.close(); if (auth) signOut(auth); });
+E.editAvatarButton.addEventListener("click", openAvatarEditor);
+E.avatarSaveButton.addEventListener("click", saveAvatar);
+E.goalButton = E.profileGoalButton; // 保持兼容
 E.goalForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const goal = Number(E.goalInput.value);
   if (!E.goalForm.reportValidity() || goal < 500 || goal > 10000) return;
   try {
     await setDoc(doc(db, "users", currentUser.uid), { dailyGoal: goal, updatedAt: serverTimestamp() }, { merge: true });
-    dailyGoal = goal; E.goalDialog.close(); render();
+    dailyGoal = goal; E.goalDialog.close(); E.profileGoalVal.textContent = `${goal} ml`; render();
     showToast(`每日目标已设为 ${goal} ml`, false);
   } catch (e) { showToast(toFriendlyError(e), false); }
 });
@@ -112,8 +131,26 @@ E.datePicker.addEventListener("change", () => {
 });
 E.undoButton.addEventListener("click", undoDelete);
 E.historyList.addEventListener("click", (event) => {
-  const btn = event.target.closest(".delete-record");
-  if (btn) deleteRecord(btn.dataset.id);
+  const delBtn = event.target.closest(".delete-record");
+  if (delBtn) { deleteRecord(delBtn.dataset.id); return; }
+  handleTimeEditClick(event);
+});
+
+// 历史记录弹窗：点击某天查看详情
+E.historyContent.addEventListener("click", (event) => {
+  const row = event.target.closest(".hist-row");
+  if (!row) return;
+  const idx = parseInt(row.dataset.dayIndex);
+  if (!isNaN(idx) && historyDayData[idx]) {
+    renderDayDetail(historyDayData[idx]);
+  }
+});
+// 历史记录返回按钮
+E.historyContent.addEventListener("click", (event) => {
+  const backBtn = event.target.closest(".history-back-btn");
+  if (backBtn) {
+    loadHistory();
+  }
 });
 
 // 对话框点击外部关闭
@@ -133,13 +170,26 @@ E.supplementTab.addEventListener("click", () => switchTab("supplement"));
 E.medicineWorkoutToggle.addEventListener("click", () => toggleWorkoutDay());
 E.supplementWorkoutToggle.addEventListener("click", () => toggleWorkoutDay());
 
+// 删除药物/补剂按钮
+E.deleteSupplementBtn.addEventListener("click", () => {
+  if (currentEditItem && currentEditItem.type === "supplement") {
+    deleteCustomItem("supplement", currentEditItem.name);
+  }
+});
+E.deleteMedicineBtn.addEventListener("click", () => {
+  if (currentEditItem && currentEditItem.type === "medicine") {
+    deleteCustomItem("medicine", currentEditItem.name);
+  }
+});
+
 // 补剂对话框
 E.customSupplementButton.addEventListener("click", () => openAddDialog("supplement"));
 E.customSupplementForm.addEventListener("submit", (e) => handleItemFormSubmit(e, "supplement"));
 E.supplementGrid.addEventListener("click", (e) => handleGridClick(e, "supplement"));
 E.supplementHistoryList.addEventListener("click", (e) => {
-  const btn = e.target.closest(".delete-record");
-  if (btn) deleteItemRecord("supplement", btn.dataset.id);
+  const delBtn = e.target.closest(".delete-record");
+  if (delBtn) { deleteItemRecord("supplement", delBtn.dataset.id); return; }
+  handleTimeEditClick(e);
 });
 
 // 厕所记录
@@ -147,8 +197,9 @@ document.querySelectorAll(".toilet-btn").forEach(btn => {
   btn.addEventListener("click", () => addToiletRecord(btn.dataset.type));
 });
 E.toiletHistoryList.addEventListener("click", (e) => {
-  const btn = e.target.closest(".delete-record");
-  if (btn) deleteToiletRecord(btn.dataset.id);
+  const delBtn = e.target.closest(".delete-record");
+  if (delBtn) { deleteToiletRecord(delBtn.dataset.id); return; }
+  handleTimeEditClick(e);
 });
 
 // 药物对话框
@@ -156,8 +207,9 @@ E.customMedicineButton.addEventListener("click", () => openAddDialog("medicine")
 E.customMedicineForm.addEventListener("submit", (e) => handleItemFormSubmit(e, "medicine"));
 E.medicineGrid.addEventListener("click", (e) => handleGridClick(e, "medicine"));
 E.medicineHistoryList.addEventListener("click", (e) => {
-  const btn = e.target.closest(".delete-record");
-  if (btn) deleteItemRecord("medicine", btn.dataset.id);
+  const delBtn = e.target.closest(".delete-record");
+  if (delBtn) { deleteItemRecord("medicine", delBtn.dataset.id); return; }
+  handleTimeEditClick(e);
 });
 
 // ========== 排程工具 ==========
@@ -243,7 +295,6 @@ function switchTab(tab) {
     t.panel.hidden = !active;
     if (active) document.querySelector(".topbar h1").textContent = t.title;
   });
-  E.goalButton.hidden = tab !== "water";
   if (tab === "water") render();
   else renderItemList(tab);
 }
@@ -273,7 +324,8 @@ async function applyUser(user) {
     E.passwordInput.value = "";
     return;
   }
-  E.userEmail.textContent = user.email || "已登录";
+  E.profileEmail.textContent = user.email || "已登录";
+  renderAvatar();
   E.authShell.hidden = true; E.appShell.hidden = false;
   await Promise.all([loadProfile(), loadDay()]);
   switchTab("water");
@@ -318,6 +370,11 @@ async function loadProfile() {
     dailyGoal = Number(data.dailyGoal) || 2000;
     userMedicines = (Array.isArray(data.medicines) ? data.medicines : [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
     userSupplements = (Array.isArray(data.supplements) ? data.supplements : [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
+    // 头像设置
+    avatarType = data.avatarType || "default";
+    avatarColor = data.avatarColor || AVATAR_COLORS[0];
+    avatarUrl = data.avatarUrl || "";
+    renderAvatar();
     render();
     renderItemList("medicine"); renderItemList("supplement");
   } catch (e) { showToast(toFriendlyError(e), false); }
@@ -357,6 +414,96 @@ async function loadDay() {
   render();
   renderItemList("medicine"); renderItemList("supplement");
 }
+
+// ========== 头像 & 个人主页 ==========
+function getInitial() {
+  const email = currentUser?.email || "U";
+  return email.charAt(0).toUpperCase();
+}
+
+function genAvatarSVG(color, size) {
+  return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="50" fill="${color}"/>
+    <circle cx="50" cy="28" r="14" fill="white" opacity="0.95"/>
+    <path d="M50 44 C26 44 18 82 17 98 L83 98 C82 82 74 44 50 44Z" fill="white" opacity="0.95"/>
+  </svg>`;
+}
+
+function renderAvatar() {
+  const svg = genAvatarSVG(avatarColor, 42);
+  if (avatarType === "custom" && avatarUrl) {
+    E.avatarImg.innerHTML = `<img src="${esc(avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  } else {
+    E.avatarImg.innerHTML = svg;
+  }
+  // 同步更新个人主页的大头像
+  if (avatarType === "custom" && avatarUrl) {
+    E.profileAvatar.innerHTML = `<img src="${esc(avatarUrl)}" alt="">`;
+  } else {
+    E.profileAvatar.innerHTML = svg;
+  }
+  E.profileGoalVal.textContent = `${dailyGoal} ml`;
+}
+
+function openProfile() {
+  E.profileEmail.textContent = currentUser?.email || "已登录";
+  E.profileGoalVal.textContent = `${dailyGoal} ml`;
+  renderAvatar();
+  E.profileDialog.showModal();
+}
+
+function openAvatarEditor() {
+  // 渲染颜色选项
+  E.avatarColors.innerHTML = AVATAR_COLORS.map(c =>
+    `<span class="avatar-color-dot${c === avatarColor ? " selected" : ""}" data-color="${c}" style="background:${c}" title="${c}"></span>`
+  ).join("");
+  E.avatarColors.querySelectorAll(".avatar-color-dot").forEach(dot => {
+    dot.addEventListener("click", () => {
+      E.avatarColors.querySelectorAll(".avatar-color-dot").forEach(d => d.classList.remove("selected"));
+      dot.classList.add("selected");
+      avatarColor = dot.dataset.color;
+      updateAvatarPreview();
+    });
+  });
+  E.avatarUrlInput.value = avatarType === "custom" ? avatarUrl : "";
+  updateAvatarPreview();
+  E.profileDialog.close();
+  E.avatarDialog.showModal();
+}
+
+function updateAvatarPreview() {
+  E.avatarPreview.innerHTML = genAvatarSVG(avatarColor, 56);
+}
+
+async function saveAvatar() {
+  const url = E.avatarUrlInput.value.trim();
+  if (url) {
+    avatarType = "custom";
+    avatarUrl = url;
+  } else {
+    avatarType = "default";
+    avatarUrl = "";
+  }
+  if (currentUser) {
+    try {
+      await setDoc(doc(db, "users", currentUser.uid), {
+        avatarType, avatarColor, avatarUrl,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (e) { /* 静默失败 */ }
+  }
+  renderAvatar();
+  E.avatarDialog.close();
+  E.profileDialog.showModal();
+}
+
+// 点击对话框外部关闭
+[E.profileDialog, E.avatarDialog].forEach(dlg => {
+  dlg.addEventListener("click", (event) => {
+    const b = dlg.getBoundingClientRect();
+    if (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom) dlg.close();
+  });
+});
 
 // ========== 饮水 ==========
 async function addRecord(source, amount) {
@@ -408,6 +555,85 @@ async function undoDelete() {
   }
 }
 
+// ========== 修改记录时间 ==========
+function toTimeValue(d) {
+  const dt = new Date(d);
+  return `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+}
+function toTimeDisplay(timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+async function updateRecordTime(coll, id, newTime) {
+  if (!currentUser) return;
+  try {
+    await setDoc(doc(db, "users", currentUser.uid, coll, id), { recordedAt: newTime }, { merge: true });
+    if (coll === "waterLogs") {
+      const idx = records.findIndex(r => r.id === id);
+      if (idx >= 0) records[idx].recordedAt = newTime;
+      records.sort((a, b) => a.recordedAt - b.recordedAt);
+      render();
+    } else if (coll === "toiletLogs") {
+      const idx = toiletRecords.findIndex(r => r.id === id);
+      if (idx >= 0) toiletRecords[idx].recordedAt = newTime;
+      toiletRecords.sort((a, b) => a.recordedAt - b.recordedAt);
+      renderToiletHistory();
+    } else if (coll === "medicineLogs") {
+      const idx = medicineRecords.findIndex(r => r.id === id);
+      if (idx >= 0) medicineRecords[idx].recordedAt = newTime;
+      medicineRecords.sort((a, b) => a.recordedAt - b.recordedAt);
+      renderItemList("medicine");
+    } else if (coll === "supplementLogs") {
+      const idx = supplementRecords.findIndex(r => r.id === id);
+      if (idx >= 0) supplementRecords[idx].recordedAt = newTime;
+      supplementRecords.sort((a, b) => a.recordedAt - b.recordedAt);
+      renderItemList("supplement");
+    }
+    showToast("时间已更新", false);
+  } catch (e) { showToast(toFriendlyError(e), false); }
+}
+
+function handleTimeEditClick(event) {
+  const timeEl = event.target.closest(".time-editable");
+  if (!timeEl || timeEl.dataset.editing === "true") return;
+  const id = timeEl.dataset.id;
+  const coll = timeEl.dataset.coll;
+  const currentTime = timeEl.dataset.time;
+  timeEl.dataset.editing = "true";
+
+  const input = document.createElement("input");
+  input.type = "time";
+  input.value = currentTime;
+  input.className = "time-input";
+
+  timeEl.textContent = "";
+  timeEl.appendChild(input);
+  input.focus();
+
+  let saved = false;
+  const save = () => {
+    if (saved) return;
+    const newTimeStr = input.value;
+    if (!newTimeStr || newTimeStr === currentTime) {
+      saved = true;
+      timeEl.textContent = toTimeDisplay(currentTime);
+      timeEl.dataset.editing = "false";
+      return;
+    }
+    saved = true;
+    const [h, m] = newTimeStr.split(":").map(Number);
+    const d = fromDateKey(selectedDate);
+    d.setHours(h, m, 0, 0);
+    updateRecordTime(coll, id, d);
+  };
+
+  input.addEventListener("change", save);
+  input.addEventListener("blur", () => setTimeout(save, 150));
+}
+
 // ========== 厕所记录 ==========
 async function addToiletRecord(type) {
   if (!currentUser) return;
@@ -438,14 +664,15 @@ function renderToiletHistory() {
     return;
   }
   E.toiletHistoryList.innerHTML = [...toiletRecords].reverse().map(r => {
-    const t = new Date(r.recordedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const tv = toTimeValue(r.recordedAt);
+    const td = toTimeDisplay(tv);
     const icon = r.type === "big"
       ? `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px;display:block"><path d="M894.357 414.095H858.728l-63.123-345.07A84.163 84.163 0 0 0 712.845 0.011H311.666a84.163 84.163 0 0 0-84.164 69.014l-62.561 345.07H129.311a42.082 42.082 0 0 0-42.081 42.082v31.421A426.989 426.989 0 0 0 286.978 847.257V981.918a42.082 42.082 0 0 0 42.081 42.082h364.709a42.082 42.082 0 0 0 42.081-42.082V847.257a426.989 426.989 0 0 0 199.748-359.659v-31.421a42.082 42.082 0 0 0-41.24-42.082zM283.611 79.125A28.054 28.054 0 0 1 311.666 56.12h401.179a28.054 28.054 0 0 1 28.054 23.005l60.879 334.97H221.891z m415.487 725.209a38.715 38.715 0 0 0-18.516 33.104v129.05H336.654v-129.05a38.996 38.996 0 0 0-18.797-33.105 371.441 371.441 0 0 1-168.327-220.228H867.144a371.722 371.722 0 0 1-168.046 220.228z m181.232-316.735a380.699 380.699 0 0 1-2.525 40.398H145.864A318.699 318.699 0 0 1 143.339 487.598v-17.394h736.991z" fill="#040000"/></svg>`
       : `<svg viewBox="-245 0 1314 1314" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px;display:block"><g fill="none" stroke="#040000" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"><circle cx="412" cy="85" r="58"/><circle cx="412" cy="85" r="26"/><path d="M412 143L412 225"/><rect x="377" y="225" width="70" height="36" rx="2"/><path d="M262 260H562C672 260 735 332 738 448L738 768C738 1080 599 1260 412 1260C225 1260 86 1080 86 768L86 448C89 332 152 260 262 260Z"/><path d="M282 405C305 355 519 355 542 405C566 458 565 740 540 890C514 1045 469 1148 412 1148C355 1148 310 1045 284 890C259 740 258 458 282 405Z"/><circle cx="412" cy="503" r="22"/><ellipse cx="412" cy="1037" rx="76" ry="23"/></g></svg>`;
     const label = r.type === "big" ? "大号" : "小号";
     return `<article class="history-item toilet-history-item">
       <span class="history-dot toilet-dot">${icon}</span>
-      <div class="history-info"><strong>${label}</strong><span>${t}</span></div>
+      <div class="history-info"><strong>${label}</strong><span class="time-editable" data-id="${r.id}" data-coll="toiletLogs" data-time="${tv}" title="点击修改时间">${td}</span></div>
       <button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button>
     </article>`;
   }).join("");
@@ -558,6 +785,9 @@ function openAddDialog(type) {
   d.name.value = ""; d.dosage.value = ""; d.target.value = "1"; d.schedule.value = "everyday";
   d.dialog.querySelector(".dialog-heading h2").textContent = "自定义" + d.label;
   d.dialog.querySelector(".primary-button").textContent = "添加" + d.label;
+  // 隐藏删除按钮
+  const delBtn = type === "medicine" ? E.deleteMedicineBtn : E.deleteSupplementBtn;
+  if (delBtn) delBtn.style.display = "none";
   d.dialog.showModal();
   setTimeout(() => d.name.focus(), 50);
 }
@@ -574,6 +804,9 @@ function openEditDialog(type, name) {
   d.schedule.value = item.schedule || "everyday";
   d.dialog.querySelector(".dialog-heading h2").textContent = "编辑" + d.label;
   d.dialog.querySelector(".primary-button").textContent = "保存修改";
+  // 显示删除按钮
+  const delBtn = type === "medicine" ? E.deleteMedicineBtn : E.deleteSupplementBtn;
+  if (delBtn) delBtn.style.display = "";
   d.dialog.showModal();
   setTimeout(() => d.name.select(), 50);
 }
@@ -626,6 +859,36 @@ async function editItem(type, oldName, newName, newDosage, newTarget, newSchedul
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
+async function deleteCustomItem(type, name) {
+  if (!currentUser) return;
+  const arr = type === "medicine" ? userMedicines : userSupplements;
+  const field = type === "medicine" ? "medicines" : "supplements";
+  const label = type === "medicine" ? "药物" : "补剂";
+  const defs = type === "medicine" ? DEFAULT_MEDICINES : DEFAULT_SUPPLEMENTS;
+
+  // 预设项目不可删除，只能移除用户自定义的覆盖
+  const isDef = defs.some(d => d.name === name);
+  let newList;
+  if (isDef) {
+    // 预设项目：将其从用户列表中移除（恢复默认）
+    newList = arr.filter(s => s.name !== name);
+  } else {
+    newList = arr.filter(s => s.name !== name);
+  }
+
+  // 确认删除
+  const dlg = type === "medicine" ? E.customMedicineDialog : E.customSupplementDialog;
+  dlg.close();
+  currentEditItem = null;
+
+  try {
+    await setDoc(doc(db, "users", currentUser.uid), { [field]: newList, updatedAt: serverTimestamp() }, { merge: true });
+    if (type === "medicine") userMedicines = newList; else userSupplements = newList;
+    renderItemList(type);
+    showToast(`已删除${label} "${name}"`, true);
+  } catch (e) { showToast(toFriendlyError(e), false); }
+}
+
 async function deleteItemRecord(type, id) {
   const cfg = getCfg(type);
   const idx = cfg.recs.findIndex(r => r.id === id);
@@ -668,8 +931,9 @@ function renderHistory() {
     return;
   }
   E.historyList.innerHTML = [...records].reverse().map(r => {
-    const t = new Date(r.recordedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-    return `<article class="history-item"><span class="history-dot">◒</span><div class="history-info"><strong>${esc(r.source)}</strong><span>${t}</span></div><strong class="history-amount">+${r.amount} ml</strong><button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button></article>`;
+    const tv = toTimeValue(r.recordedAt);
+    const td = toTimeDisplay(tv);
+    return `<article class="history-item"><span class="history-dot">◒</span><div class="history-info"><strong>${esc(r.source)}</strong><span class="time-editable" data-id="${r.id}" data-coll="waterLogs" data-time="${tv}" title="点击修改时间">${td}</span></div><strong class="history-amount">+${r.amount} ml</strong><button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button></article>`;
   }).join("");
 }
 
@@ -745,7 +1009,9 @@ function renderItemList(type) {
     listEl.innerHTML = `<div class="empty-state">这一天还没有${label}记录，点击上方卡片开始记录吧。</div>`;
   } else {
     listEl.innerHTML = [...recs].reverse().map(r => {
-      const t = new Date(r.recordedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      const tv = toTimeValue(r.recordedAt);
+      const td = toTimeDisplay(tv);
+      const coll = isMed ? "medicineLogs" : "supplementLogs";
       const item = fullList.find(s => s.name === r.name);
       const target = item?.targetCount || 1;
       const cnt = r.count || 0;
@@ -755,7 +1021,7 @@ function renderItemList(type) {
       const txt = done ? `已完成 ${cnt}/${target}` : (cnt > 0 ? `部分 ${cnt}/${target}` : "未服用");
       return `<article class="history-item supplement-history-item">
         <span class="history-dot supplement-dot ${cls}">${icon}</span>
-        <div class="history-info"><strong>${esc(r.name)}</strong><span>${esc(r.dosage || "")} · ${t}</span></div>
+        <div class="history-info"><strong>${esc(r.name)}</strong><span>${esc(r.dosage || "")} · <span class="time-editable" data-id="${r.id}" data-coll="${coll}" data-time="${tv}" title="点击修改时间">${td}</span></span></div>
         <strong class="history-amount supplement-status ${cls}">${txt}</strong>
         <button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button>
       </article>`;
@@ -807,18 +1073,23 @@ async function loadHistory() {
       const toiletSnap = results[offset + 3];
       const workoutSnap = results[offset + 4];
 
+      const waterRecs = waterSnap.docs.map(d => d.data());
       const waterTotal = waterSnap.docs.reduce((s, doc) => s + (doc.data().amount || 0), 0);
       const medRecs = medSnap.docs.map(d => ({ ...d.data(), count: d.data().count ?? (d.data().taken ? 1 : 0) }));
       const suppRecs = suppSnap.docs.map(d => ({ ...d.data(), count: d.data().count ?? (d.data().taken ? 1 : 0) }));
       const toiletRecs = toiletSnap.docs.map(d => d.data());
       const isWorkout = workoutSnap.exists() && workoutSnap.data().isWorkout === true;
 
-      return { dateKey: dk, waterTotal, medRecs, suppRecs, toiletRecs, isWorkout };
+      return { dateKey: dk, waterTotal, waterRecs, medRecs, suppRecs, toiletRecs, isWorkout };
     });
+
+    // 缓存数据
+    historyDayData = dayData;
+    historyViewMode = "overview";
 
     // 渲染
     const now = new Date();
-    E.historyContent.innerHTML = dayData.map(day => {
+    E.historyContent.innerHTML = dayData.map((day, i) => {
       const d = fromDateKey(day.dateKey);
       const isToday = day.dateKey === toDateKey(now);
       const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
@@ -860,7 +1131,7 @@ async function loadHistory() {
         return `<span class="hist-dot red" title="${item.name}: 未服">✗</span>`;
       }).join("");
 
-      return `<div class="hist-row">
+      return `<div class="hist-row" data-day-index="${i}" title="点击查看详情">
         <div class="hist-date">
           <strong>${dateLabel}</strong>
           <span>${fullDate}${day.isWorkout ? " 🏋️" : ""}</span>
@@ -880,6 +1151,152 @@ async function loadHistory() {
   } catch (e) {
     E.historyContent.innerHTML = `<div class="empty-state">加载失败：${toFriendlyError(e)}</div>`;
   }
+}
+
+// ========== 日详情视图 ==========
+function renderDayDetail(day) {
+  if (!day) return;
+  historyViewMode = "detail";
+  const d = fromDateKey(day.dateKey);
+
+  let dateLabel;
+  const now = new Date();
+  if (day.dateKey === toDateKey(now)) dateLabel = "今天";
+  else {
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+    if (day.dateKey === toDateKey(yesterday)) dateLabel = "昨天";
+    else dateLabel = d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+  }
+  const fullDate = d.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+
+  // 饮水详情
+  let waterItems = "";
+  if (day.waterRecs && day.waterRecs.length > 0) {
+    waterItems = [...day.waterRecs].sort((a, b) => {
+      const ta = a.recordedAt?.toDate?.() ?? new Date(0);
+      const tb = b.recordedAt?.toDate?.() ?? new Date(0);
+      return tb - ta;
+    }).map(r => {
+      const t = r.recordedAt?.toDate?.() ?? new Date();
+      const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      return `<div class="detail-item">
+        <span class="detail-dot">◒</span>
+        <span class="detail-name">${esc(r.source || "饮水")}</span>
+        <span class="detail-time">${td}</span>
+        <strong class="detail-val">+${r.amount} ml</strong>
+      </div>`;
+    }).join("");
+  } else {
+    waterItems = '<div class="detail-empty">这一天没有饮水记录</div>';
+  }
+
+  // 药物详情
+  let medItems = "";
+  if (day.medRecs && day.medRecs.length > 0) {
+    medItems = [...day.medRecs].sort((a, b) => {
+      const ta = a.recordedAt?.toDate?.() ?? new Date(0);
+      const tb = b.recordedAt?.toDate?.() ?? new Date(0);
+      return tb - ta;
+    }).map(r => {
+      const t = r.recordedAt?.toDate?.() ?? new Date();
+      const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      const cnt = r.count || 0;
+      const full = getFullList("medicine");
+      const item = full.find(s => s.name === r.name);
+      const target = item?.targetCount || 1;
+      const done = cnt >= target;
+      const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
+      const txt = done ? `✓ ${cnt}/${target}` : (cnt > 0 ? `${cnt}/${target}` : "未服");
+      return `<div class="detail-item">
+        <span class="detail-dot ${cls}">💊</span>
+        <span class="detail-name">${esc(r.name)}</span>
+        <span class="detail-dosage">${esc(r.dosage || "")}</span>
+        <span class="detail-time">${td}</span>
+        <strong class="detail-val detail-status-${cls}">${txt}</strong>
+      </div>`;
+    }).join("");
+  } else {
+    medItems = '<div class="detail-empty">这一天没有药物记录</div>';
+  }
+
+  // 补剂详情
+  let suppItems = "";
+  if (day.suppRecs && day.suppRecs.length > 0) {
+    suppItems = [...day.suppRecs].sort((a, b) => {
+      const ta = a.recordedAt?.toDate?.() ?? new Date(0);
+      const tb = b.recordedAt?.toDate?.() ?? new Date(0);
+      return tb - ta;
+    }).map(r => {
+      const t = r.recordedAt?.toDate?.() ?? new Date();
+      const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      const cnt = r.count || 0;
+      const full = getFullList("supplement");
+      const item = full.find(s => s.name === r.name);
+      const target = item?.targetCount || 1;
+      const done = cnt >= target;
+      const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
+      const txt = done ? `✓ ${cnt}/${target}` : (cnt > 0 ? `${cnt}/${target}` : "未服");
+      return `<div class="detail-item">
+        <span class="detail-dot ${cls}">💊</span>
+        <span class="detail-name">${esc(r.name)}</span>
+        <span class="detail-dosage">${esc(r.dosage || "")}</span>
+        <span class="detail-time">${td}</span>
+        <strong class="detail-val detail-status-${cls}">${txt}</strong>
+      </div>`;
+    }).join("");
+  } else {
+    suppItems = '<div class="detail-empty">这一天没有补剂记录</div>';
+  }
+
+  // 厕所详情
+  let toiletItems = "";
+  if (day.toiletRecs && day.toiletRecs.length > 0) {
+    toiletItems = [...day.toiletRecs].sort((a, b) => {
+      const ta = a.recordedAt?.toDate?.() ?? new Date(0);
+      const tb = b.recordedAt?.toDate?.() ?? new Date(0);
+      return tb - ta;
+    }).map(r => {
+      const t = r.recordedAt?.toDate?.() ?? new Date();
+      const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      const icon = r.type === "big"
+        ? `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;display:block"><path d="M894.357 414.095H858.728l-63.123-345.07A84.163 84.163 0 0 0 712.845 0.011H311.666a84.163 84.163 0 0 0-84.164 69.014l-62.561 345.07H129.311a42.082 42.082 0 0 0-42.081 42.082v31.421A426.989 426.989 0 0 0 286.978 847.257V981.918a42.082 42.082 0 0 0 42.081 42.082h364.709a42.082 42.082 0 0 0 42.081-42.082V847.257a426.989 426.989 0 0 0 199.748-359.659v-31.421a42.082 42.082 0 0 0-41.24-42.082zM283.611 79.125A28.054 28.054 0 0 1 311.666 56.12h401.179a28.054 28.054 0 0 1 28.054 23.005l60.879 334.97H221.891z m415.487 725.209a38.715 38.715 0 0 0-18.516 33.104v129.05H336.654v-129.05a38.996 38.996 0 0 0-18.797-33.105 371.441 371.441 0 0 1-168.327-220.228H867.144a371.722 371.722 0 0 1-168.046 220.228z m181.232-316.735a380.699 380.699 0 0 1-2.525 40.398H145.864A318.699 318.699 0 0 1 143.339 487.598v-17.394h736.991z" fill="#040000"/></svg>`
+        : `<svg viewBox="-245 0 1314 1314" xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;display:block"><g fill="none" stroke="#040000" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"><circle cx="412" cy="85" r="58"/><circle cx="412" cy="85" r="26"/><path d="M412 143L412 225"/><rect x="377" y="225" width="70" height="36" rx="2"/><path d="M262 260H562C672 260 735 332 738 448L738 768C738 1080 599 1260 412 1260C225 1260 86 1080 86 768L86 448C89 332 152 260 262 260Z"/><path d="M282 405C305 355 519 355 542 405C566 458 565 740 540 890C514 1045 469 1148 412 1148C355 1148 310 1045 284 890C259 740 258 458 282 405Z"/><circle cx="412" cy="503" r="22"/><ellipse cx="412" cy="1037" rx="76" ry="23"/></g></svg>`;
+      const label = r.type === "big" ? "大号" : "小号";
+      return `<div class="detail-item">
+        <span class="detail-dot">${icon}</span>
+        <span class="detail-name">${label}</span>
+        <span class="detail-time">${td}</span>
+      </div>`;
+    }).join("");
+  } else {
+    toiletItems = '<div class="detail-empty">这一天没有厕所记录</div>';
+  }
+
+  E.historyContent.innerHTML = `
+    <div class="detail-header">
+      <button class="history-back-btn text-button" type="button">← 返回历史列表</button>
+      <div>
+        <strong class="detail-date-label">${dateLabel}</strong>
+        <span class="detail-full-date">${fullDate}${day.isWorkout ? " 🏋️ 健身日" : ""}</span>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h3>💧 饮水记录</h3>
+      <div class="detail-water-total">当日饮水：<strong>${day.waterTotal} ml</strong></div>
+      ${waterItems}
+    </div>
+    <div class="detail-section">
+      <h3>💚 药物记录</h3>
+      ${medItems}
+    </div>
+    <div class="detail-section">
+      <h3>💊 补剂记录</h3>
+      ${suppItems}
+    </div>
+    <div class="detail-section">
+      <h3>🧻 厕所记录</h3>
+      ${toiletItems}
+    </div>`;
 }
 
 // ========== 工具 ==========

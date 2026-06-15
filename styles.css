@@ -168,23 +168,37 @@ button {
   gap: 10px;
 }
 
-.user-email {
-  max-width: 180px;
+/* ---- 头像按钮 ---- */
+.avatar-button {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  padding: 0;
+  border: 2px solid rgba(255,255,255,0.8);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.logout-button {
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.6);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
+.avatar-button:hover {
+  border-color: var(--mint-400);
+  box-shadow: 0 4px 16px rgba(22,141,132,0.15);
+}
+
+.avatar-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.avatar-img svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .topbar,
@@ -730,6 +744,24 @@ dialog label {
   font-weight: 800;
 }
 
+.danger-button {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #f5c6cb;
+  border-radius: 14px;
+  background: #fff5f5;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.danger-button:hover {
+  background: #fff0ef;
+  border-color: var(--red);
+}
+
 .toast {
   position: fixed;
   z-index: 10;
@@ -801,10 +833,6 @@ dialog label {
 
   .app-shell {
     padding: 28px 17px 55px;
-  }
-
-  .user-email {
-    display: none;
   }
 
   .progress-card {
@@ -968,6 +996,12 @@ dialog label {
   gap: 0;
   padding: 14px 0;
   border-bottom: 1px solid rgba(23, 61, 58, 0.06);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.hist-row:hover {
+  background: rgba(241,248,245,0.4);
 }
 
 .hist-row:last-child { border-bottom: 0; }
@@ -1041,6 +1075,133 @@ dialog label {
 .hist-empty {
   color: #ccc;
   font-size: 12px;
+}
+
+/* ---- 历史日详情 ---- */
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(23,61,58,0.08);
+}
+
+.detail-header .text-button {
+  flex-shrink: 0;
+}
+
+.detail-date-label {
+  display: block;
+  font-size: 18px;
+  color: var(--ink);
+}
+
+.detail-full-date {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.detail-section {
+  margin-bottom: 22px;
+}
+
+.detail-section h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+
+.detail-water-total {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.detail-water-total strong {
+  color: var(--mint-700);
+  font-size: 15px;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(23,61,58,0.04);
+  font-size: 13px;
+}
+
+.detail-dot {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--mint-100);
+  color: var(--mint-700);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.detail-dot.taken {
+  background: #e3f7f0;
+  color: var(--mint-600);
+}
+
+.detail-dot.partial {
+  background: #fff8e8;
+  color: #b8952e;
+}
+
+.detail-dot.missed {
+  background: #fff0ef;
+  color: var(--red);
+}
+
+.detail-name {
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.detail-dosage {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.detail-time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.detail-val {
+  font-size: 13px;
+  min-width: 60px;
+  text-align: right;
+}
+
+.detail-status-taken {
+  color: var(--mint-700);
+}
+
+.detail-status-partial {
+  color: #8a7020;
+}
+
+.detail-status-missed {
+  color: var(--red);
+}
+
+.detail-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--mint-200);
+  border-radius: 12px;
 }
 
 /* ---- 补剂统计卡片 ---- */
@@ -1471,6 +1632,210 @@ dialog label {
 
 .toilet-history-item {
   grid-template-columns: 42px 1fr auto;
+}
+
+/* ---- 时间编辑 ---- */
+.time-editable {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--mint-400);
+  transition: background 0.15s;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.time-editable:hover {
+  background: var(--mint-100);
+}
+
+.time-input {
+  width: 65px;
+  padding: 2px 4px;
+  border: 1px solid var(--mint-400);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(102, 198, 179, 0.2);
+}
+
+.time-input:focus {
+  border-color: var(--mint-600);
+}
+
+/* ---- 个人主页 ---- */
+#profileDialog {
+  width: min(calc(100% - 32px), 400px);
+}
+
+.profile-content {
+  padding: 28px;
+}
+
+.profile-avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+}
+
+.profile-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--mint-200);
+  box-shadow: 0 8px 24px rgba(27,78,71,0.08);
+}
+
+.profile-avatar svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.profile-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-info {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.profile-email {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.profile-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(23,61,58,0.06);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.7);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.profile-action-btn:hover {
+  background: rgba(241,248,245,0.9);
+  border-color: var(--mint-200);
+}
+
+.profile-action-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--mint-100);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.profile-action-icon svg {
+  display: block;
+}
+
+.profile-action-val {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.profile-action-arrow {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.profile-logout-btn {
+  color: var(--red);
+}
+
+.profile-logout-btn .profile-action-icon {
+  background: #fff0ef;
+}
+
+/* ---- 头像编辑弹窗 ---- */
+#avatarDialog {
+  width: min(calc(100% - 32px), 400px);
+}
+
+#avatarForm {
+  display: grid;
+  gap: 13px;
+  padding: 28px;
+}
+
+.avatar-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+}
+
+.avatar-preview {
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--mint-200);
+}
+
+.avatar-preview svg,
+.avatar-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-preview-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.avatar-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.avatar-color-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.avatar-color-dot:hover {
+  transform: scale(1.15);
+}
+
+.avatar-color-dot.selected {
+  border-color: var(--mint-700);
+  box-shadow: 0 0 0 2px rgba(22,141,132,0.2);
 }
 
 @media (prefers-reduced-motion: reduce) {
