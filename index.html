@@ -171,7 +171,29 @@
           </div>
           <div class="toilet-buttons">
             <button class="toilet-btn big-btn" type="button" data-type="big">
-              <span class="toilet-emoji">🚽</span>
+              <span class="toilet-emoji">
+                <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="tBody" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#ffffff"/>
+                      <stop offset="100%" stop-color="#e9eef5"/>
+                    </linearGradient>
+                    <linearGradient id="tTank" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#fafbfc"/>
+                      <stop offset="100%" stop-color="#eef1f6"/>
+                    </linearGradient>
+                  </defs>
+                  <rect x="72" y="16" width="96" height="66" rx="12" fill="url(#tTank)" stroke="#cfd6df" stroke-width="4"/>
+                  <rect x="68" y="10" width="104" height="14" rx="6" fill="#f6f7f9" stroke="#cfd6df" stroke-width="3"/>
+                  <ellipse cx="120" cy="14" rx="12" ry="5" fill="#dce2ea" stroke="#aab2bd" stroke-width="2"/>
+                  <path d="M52 82 Q48 140 68 178 Q84 205 120 205 Q156 205 172 178 Q192 140 188 82 Z" fill="url(#tBody)" stroke="#cfd6df" stroke-width="4"/>
+                  <ellipse cx="120" cy="82" rx="72" ry="22" fill="#f6f7f9" stroke="#cfd6df" stroke-width="3"/>
+                  <ellipse cx="120" cy="82" rx="60" ry="16" fill="#f8f9fb" stroke="#dce2ea" stroke-width="2"/>
+                  <ellipse cx="120" cy="86" rx="44" ry="11" fill="#e6eaf0" stroke="#c8ced8" stroke-width="2"/>
+                  <ellipse cx="120" cy="88" rx="30" ry="7" fill="#edf3f8" opacity="0.7"/>
+                  <path d="M94 182 Q96 212 120 214 Q144 212 146 182" fill="none" stroke="#cfd6df" stroke-width="5" stroke-linecap="round"/>
+                </svg>
+              </span>
               <strong>大号</strong>
               <span class="toilet-add">+</span>
             </button>
