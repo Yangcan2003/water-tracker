@@ -1,0 +1,23 @@
+{
+  "name": "每日健康追踪",
+  "short_name": "健康追踪",
+  "description": "饮水、药物、补剂与每日健康记录",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#edf5f1",
+  "theme_color": "#168d84",
+  "icons": [
+    {
+      "src": "icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
