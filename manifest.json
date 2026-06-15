@@ -20,5 +20,28 @@
       "type": "image/svg+xml",
       "purpose": "any"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "记录饮水",
+      "short_name": "喝水",
+      "description": "快速记录饮水",
+      "url": "./index.html?action=water",
+      "icons": [{ "src": "icons/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "记录药物",
+      "short_name": "吃药",
+      "description": "快速标记药物",
+      "url": "./index.html?action=medicine",
+      "icons": [{ "src": "icons/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "记录补剂",
+      "short_name": "补剂",
+      "description": "快速标记补剂",
+      "url": "./index.html?action=supplement",
+      "icons": [{ "src": "icons/icon-192.svg", "sizes": "192x192" }]
+    }
   ]
 }

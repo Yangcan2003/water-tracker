@@ -1,6 +1,6 @@
 // ========== 存储抽象层 ==========
 // 未登录 → localStorage；已登录 → Firestore + localStorage 缓存
-import { LS_KEY, DEFAULT_MEDICINES, DEFAULT_SUPPLEMENTS } from "./config.js";
+import { LS_KEY, DEFAULT_MEDICINES, DEFAULT_SUPPLEMENTS, DEFAULT_CUPS, DEFAULT_REMINDER, DEFAULT_SETTINGS } from "./config.js";
 import { generateLocalId, toDateKey } from "./utils.js";
 
 class StorageManager {
@@ -78,6 +78,9 @@ class StorageManager {
       },
       records: {},
       workoutDays: {},
+      cups: [...DEFAULT_CUPS],
+      reminder: { ...DEFAULT_REMINDER },
+      settings: { ...DEFAULT_SETTINGS },
       meta: { lastSyncedAt: null, pendingSyncCount: 0 },
     };
   }
@@ -411,6 +414,42 @@ class StorageManager {
   async saveItems(type, items) {
     const key = type === "medicine" ? "medicines" : "supplements";
     await this.updateProfile({ [key]: items });
+  }
+
+  // ========== Cups (自定义水杯) ==========
+  async getCups() {
+    const data = this._loadLocal();
+    return (Array.isArray(data.cups) && data.cups.length > 0) ? data.cups : [...DEFAULT_CUPS];
+  }
+
+  async saveCups(cups) {
+    const data = this._loadLocal();
+    data.cups = cups;
+    this._saveLocal(data);
+  }
+
+  // ========== Settings (音效/震动/语言) ==========
+  async getSettings() {
+    const data = this._loadLocal();
+    return { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+  }
+
+  async updateSettings(partial) {
+    const data = this._loadLocal();
+    data.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}), ...partial };
+    this._saveLocal(data);
+  }
+
+  // ========== Reminder (饮水提醒) ==========
+  async getReminder() {
+    const data = this._loadLocal();
+    return { ...DEFAULT_REMINDER, ...(data.reminder || {}) };
+  }
+
+  async updateReminder(partial) {
+    const data = this._loadLocal();
+    data.reminder = { ...DEFAULT_REMINDER, ...(data.reminder || {}), ...partial };
+    this._saveLocal(data);
   }
 
   // ========== History (multi-day) ==========

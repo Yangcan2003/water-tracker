@@ -1922,6 +1922,379 @@ dialog label {
   font-size: 12px;
 }
 
+/* ---- 智能推荐 ---- */
+.smart-goal-section {
+  margin-top: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--mint-200);
+  border-radius: 14px;
+  background: var(--mint-50);
+}
+
+.smart-goal-section summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mint-700);
+  padding: 4px 0;
+}
+
+.smart-goal-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.smart-goal-form label {
+  margin-top: 0;
+}
+
+.smart-result {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: white;
+  font-size: 14px;
+  text-align: center;
+}
+
+.smart-result strong {
+  color: var(--mint-700);
+  font-size: 18px;
+}
+
+/* ---- 水杯编辑 ---- */
+.cup-edit-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.cup-edit-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(23,61,58,0.06);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.6);
+}
+
+.cup-edit-item span {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cup-edit-item .cup-amount {
+  color: var(--mint-700);
+  font-weight: 700;
+  min-width: 50px;
+  text-align: right;
+}
+
+.cup-edit-item .cup-delete-btn {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.cup-edit-item .cup-delete-btn:hover {
+  background: #fff0ef;
+  color: var(--red);
+}
+
+.cup-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.cup-add-row .text-field {
+  flex: 2;
+}
+
+.cup-add-row .number-field {
+  flex: 1;
+}
+
+#cupDialog {
+  width: min(calc(100% - 32px), 440px);
+}
+
+/* ---- FAB ---- */
+.fab-container {
+  position: fixed;
+  right: 24px;
+  bottom: 28px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.fab-main {
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--mint-700);
+  color: white;
+  cursor: pointer;
+  font-size: 26px;
+  box-shadow: 0 8px 28px rgba(15, 117, 111, 0.32);
+  transition: transform 0.25s ease, background 0.2s;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+.fab-main:hover {
+  background: var(--mint-600);
+  transform: scale(1.08);
+}
+
+.fab-main.open {
+  transform: rotate(45deg);
+  background: var(--red);
+}
+
+.fab-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.fab-menu.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.fab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 24px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 18px rgba(23,61,58,0.12);
+  transition: transform 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+
+.fab-item:hover {
+  transform: translateX(-3px);
+  box-shadow: 0 6px 22px rgba(23,61,58,0.18);
+}
+
+.fab-icon {
+  font-size: 18px;
+}
+
+.fab-label {
+  font-size: 13px;
+}
+
+/* ---- 统计弹窗 ---- */
+#statsDialog {
+  width: min(calc(100% - 32px), 680px);
+}
+
+.stats-tabs {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 16px;
+  padding: 5px;
+  border-radius: 13px;
+  background: var(--mint-100);
+}
+
+.stats-tab {
+  flex: 1;
+  padding: 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 0.2s, color 0.2s;
+}
+
+.stats-tab.active {
+  background: white;
+  color: var(--mint-700);
+  box-shadow: 0 5px 15px rgba(25,92,83,0.08);
+}
+
+.chart-container {
+  position: relative;
+  width: 100%;
+  min-height: 200px;
+}
+
+.chart-container canvas {
+  width: 100% !important;
+  max-height: 260px;
+}
+
+/* ---- 提醒弹窗 ---- */
+#reminderDialog {
+  width: min(calc(100% - 32px), 440px);
+}
+
+#reminderForm {
+  display: grid;
+  gap: 13px;
+  padding: 28px;
+}
+
+.reminder-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.6);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ---- Toggle Switch ---- */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 26px;
+  background: #ccc;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  left: 2px;
+  top: 2px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--mint-600);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(22px);
+}
+
+.reminder-times-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reminder-time-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(23,61,58,0.06);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.6);
+}
+
+.reminder-time-item input[type="time"] {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--mint-200);
+  border-radius: 8px;
+  font: inherit;
+  color: var(--ink);
+  background: white;
+  outline: none;
+}
+
+.reminder-time-item input[type="time"]:focus {
+  border-color: var(--mint-400);
+}
+
+.reminder-time-item .reminder-delete-btn {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.reminder-time-item .reminder-delete-btn:hover {
+  background: #fff0ef;
+  color: var(--red);
+}
+
+/* ---- 设置弹窗 ---- */
+#settingsDialog {
+  width: min(calc(100% - 32px), 400px);
+}
+
+.settings-list {
+  display: grid;
+  gap: 4px;
+  padding: 0 28px 28px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.setting-row select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2122,4 +2495,53 @@ dialog label {
   .detail-dot.taken { color: #16a378; }
   .detail-dot.partial { color: #eab308; }
   .detail-dot.missed { color: #ef4444; }
+
+  /* 新增组件暗色 */
+  .smart-goal-section {
+    border-color: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+  }
+
+  .smart-goal-section summary {
+    color: var(--mint-600);
+  }
+
+  .smart-result {
+    background: rgba(255,255,255,0.06);
+  }
+
+  .cup-edit-item {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.06);
+  }
+
+  .fab-item {
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .reminder-toggle-row,
+  .reminder-time-item {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.06);
+  }
+
+  .reminder-time-item input[type="time"] {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+    color: var(--ink);
+  }
+
+  .reminder-time-item input[type="time"]:focus {
+    border-color: var(--mint-400);
+  }
+
+  .stats-tab.active {
+    background: var(--mint-600);
+    color: #fff;
+  }
+
+  .setting-row {
+    color: var(--ink);
+  }
 }

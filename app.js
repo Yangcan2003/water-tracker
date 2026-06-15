@@ -6,8 +6,8 @@ import {
 import {
   getFirestore, serverTimestamp, setDoc, doc,
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
-import { getFirebaseConfig, AVATAR_COLORS, DEFAULT_MEDICINES, DEFAULT_SUPPLEMENTS } from "./js/config.js";
-import { toDateKey, fromDateKey, isWeekday, esc, toFriendlyError, toTimeValue, toTimeDisplay, getProgressMessage, genAvatarSVG, TOILET_SVG } from "./js/utils.js";
+import { getFirebaseConfig, AVATAR_COLORS, DEFAULT_MEDICINES, DEFAULT_SUPPLEMENTS, DEFAULT_CUPS, DEFAULT_REMINDER, DEFAULT_SETTINGS } from "./js/config.js";
+import { toDateKey, fromDateKey, isWeekday, esc, toFriendlyError, toTimeValue, toTimeDisplay, getProgressMessage, genAvatarSVG, TOILET_SVG, t, setLang, getLang, playWaterSound, vibrate, playCompleteSound } from "./js/utils.js";
 import { storage } from "./js/storage.js";
 
 // ========== 全局状态 ==========
@@ -29,6 +29,14 @@ const HISTORY_PAGE_SIZE = 14;
 let avatarType = "default";
 let avatarColor = "#168d84";
 let avatarUrl = "";
+// 新增状态
+let userCups = [...DEFAULT_CUPS];
+let reminderSettings = { ...DEFAULT_REMINDER };
+let appSettings = { ...DEFAULT_SETTINGS };
+let reminderInterval = null;
+let statsChart = null, complianceChart = null;
+let fabOpen = false;
+let currentEditCupIdx = -1;
 
 // ========== DOM 元素 ==========
 const E = {};
@@ -61,6 +69,14 @@ function $(sel) { return document.querySelector(sel); }
   "supplementWorkoutToggle","deleteSupplementBtn","deleteMedicineBtn",
   "toiletRecordCount","toiletHistoryList",
   "syncButton","syncIcon","syncLabel","offlineBadge","authDialog","authDialogClose",
+  // 新增 DOM
+  "cupDialog","cupList","newCupName","newCupAmount","addCupBtn",
+  "statsDialog","statsWeekTab","statsMonthTab","waterChart","complianceChart",
+  "reminderDialog","reminderEnabled","reminderTimesList","addReminderTimeBtn","saveReminderBtn",
+  "settingsDialog","soundEnabled","vibrationEnabled","languageSelect",
+  "profileStatsButton","profileReminderButton","profileReminderStatus","profileSettingsButton",
+  "editCupsBtn","smartWeight","smartActivity","smartResult","smartApplyBtn",
+  "fabMain","fabMenu",
 ].forEach(id => { const el = $("#"+id); if (el) E[id] = el; });
 
 // ========== 事件绑定 ==========
@@ -130,14 +146,14 @@ E.historyList.addEventListener("click", (event) => {
 });
 
 E.historyContent.addEventListener("click", (event) => {
+  // 优先检查返回按钮（避免行点击冲突）
+  const backBtn = event.target.closest(".history-back-btn");
+  if (backBtn) { loadHistory(); return; }
+  // 检查历史行点击 → 进入日详情
   const row = event.target.closest(".hist-row");
   if (!row) return;
   const idx = parseInt(row.dataset.dayIndex);
   if (!isNaN(idx) && historyDayData[idx]) renderDayDetail(historyDayData[idx]);
-});
-E.historyContent.addEventListener("click", (event) => {
-  const backBtn = event.target.closest(".history-back-btn");
-  if (backBtn) loadHistory();
 });
 
 [E.goalDialog, E.customDialog, E.customSupplementDialog, E.customMedicineDialog, E.historyDialog, E.authDialog].forEach(dlg => {
@@ -189,6 +205,65 @@ E.medicineHistoryList.addEventListener("click", (e) => {
   handleTimeEditClick(e);
 });
 
+// 水杯编辑
+if (E.addCupBtn) E.addCupBtn.addEventListener("click", addCustomCup);
+if (E.editCupsBtn) E.editCupsBtn.addEventListener("click", openCupEditor);
+// 统计
+if (E.profileStatsButton) E.profileStatsButton.addEventListener("click", () => { E.profileDialog.close(); openStats(); });
+if (E.statsWeekTab) E.statsWeekTab.addEventListener("click", () => { E.statsWeekTab.classList.add("active"); E.statsMonthTab.classList.remove("active"); renderStatsChart("week"); });
+if (E.statsMonthTab) E.statsMonthTab.addEventListener("click", () => { E.statsMonthTab.classList.add("active"); E.statsWeekTab.classList.remove("active"); renderStatsChart("month"); });
+// 提醒
+if (E.profileReminderButton) E.profileReminderButton.addEventListener("click", () => { E.profileDialog.close(); openReminderDialog(); });
+if (E.addReminderTimeBtn) E.addReminderTimeBtn.addEventListener("click", () => {
+  reminderSettings.times.push("12:00");
+  renderReminderTimes();
+});
+if (E.saveReminderBtn) E.saveReminderBtn.addEventListener("click", saveReminderSettings);
+// 设置
+if (E.profileSettingsButton) E.profileSettingsButton.addEventListener("click", () => { E.profileDialog.close(); openSettingsDialog(); });
+if (E.soundEnabled) E.soundEnabled.addEventListener("change", () => { appSettings.soundEnabled = E.soundEnabled.checked; storage.updateSettings(appSettings); });
+if (E.vibrationEnabled) E.vibrationEnabled.addEventListener("change", () => { appSettings.vibrationEnabled = E.vibrationEnabled.checked; storage.updateSettings(appSettings); });
+if (E.languageSelect) E.languageSelect.addEventListener("change", () => {
+  const lang = E.languageSelect.value;
+  setLang(lang); appSettings.language = lang;
+  storage.updateSettings({ language: lang });
+  updatePageLanguage();
+});
+// 智能推荐
+if (E.smartWeight) E.smartWeight.addEventListener("input", updateSmartGoal);
+if (E.smartActivity) E.smartActivity.addEventListener("change", updateSmartGoal);
+if (E.smartApplyBtn) E.smartApplyBtn.addEventListener("click", () => {
+  const weight = parseFloat(E.smartWeight.value) || 65;
+  const activity = E.smartActivity.value || "mid";
+  const rates = { low: 30, mid: 35, high: 42 };
+  const goal = Math.round(weight * (rates[activity] || 35) / 50) * 50;
+  E.goalInput.value = goal;
+  showToast(`已应用推荐值 ${goal} ml`, false);
+});
+// FAB
+if (E.fabMain) {
+  E.fabMain.addEventListener("click", () => {
+    fabOpen = !fabOpen;
+    E.fabMain.classList.toggle("open", fabOpen);
+    E.fabMenu.classList.toggle("open", fabOpen);
+  });
+  document.querySelectorAll(".fab-item").forEach(item => {
+    item.addEventListener("click", () => {
+      const action = item.dataset.fab;
+      fabOpen = false; E.fabMain.classList.remove("open"); E.fabMenu.classList.remove("open");
+      if (action === "water") { E.customDialog.showModal(); setTimeout(() => E.customAmount.select(), 50); }
+      else if (action === "medicine") { switchTab("medicine"); }
+      else if (action === "supplement") { switchTab("supplement"); }
+    });
+  });
+}
+// 点击页面其他地方关闭 FAB
+document.addEventListener("click", (e) => {
+  if (fabOpen && !e.target.closest(".fab-container")) {
+    fabOpen = false; E.fabMain.classList.remove("open"); E.fabMenu.classList.remove("open");
+  }
+});
+
 // 离线检测
 window.addEventListener("online", updateOnlineStatus);
 window.addEventListener("offline", updateOnlineStatus);
@@ -225,9 +300,6 @@ function getSkipReason(type, item) {
 function updateOnlineStatus() {
   const online = navigator.onLine;
   if (E.offlineBadge) E.offlineBadge.hidden = online;
-  if (E.syncIcon && !currentUser) {
-    E.syncIcon.textContent = online ? "☁️" : "📡";
-  }
 }
 
 // ========== 同步按钮 UI ==========
@@ -242,7 +314,8 @@ function updateSyncButton() {
     E.syncLabel.textContent = "本地模式";
     E.syncButton.title = "登录以同步数据";
   }
-  updateOnlineStatus();
+  // 同步离线标识
+  if (E.offlineBadge) E.offlineBadge.hidden = navigator.onLine;
 }
 
 // ========== 健身日 ==========
@@ -325,9 +398,17 @@ async function applyUser(user) {
     avatarType = profile.avatarType || "default";
     avatarColor = profile.avatarColor || "#168d84";
     avatarUrl = profile.avatarUrl || "";
+    userCups = await storage.getCups();
+    reminderSettings = await storage.getReminder();
+    appSettings = await storage.getSettings();
+    setLang(appSettings.language || "zh");
+    if (E.languageSelect) E.languageSelect.value = appSettings.language || "zh";
     renderAvatar();
+    renderCups();
     await loadDay();
     switchTab("water");
+    updatePageLanguage();
+    startReminderCheck();
     return;
   }
   // 已登录 → 云端模式
@@ -348,13 +429,20 @@ async function applyUser(user) {
     }
   }
 
+  userCups = await storage.getCups();
+  reminderSettings = await storage.getReminder();
+  appSettings = await storage.getSettings();
+  setLang(appSettings.language || "zh");
+  if (E.languageSelect) E.languageSelect.value = appSettings.language || "zh";
   await Promise.all([loadProfile(), loadDay()]);
   switchTab("water");
+  updatePageLanguage();
+  startReminderCheck();
 }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
-  if (!auth || !E.authForm.reportValidity()) return;
+  if (!auth || !E.authForm.reportValidity() || E.authSubmit.disabled) return;
   setAuthBusy(true); showAuthMessage("");
   const email = E.emailInput.value.trim(), pw = E.passwordInput.value;
   try {
@@ -407,7 +495,9 @@ async function loadProfile() {
     avatarType = profile.avatarType || "default";
     avatarColor = profile.avatarColor || AVATAR_COLORS[0];
     avatarUrl = profile.avatarUrl || "";
+    userCups = await storage.getCups();
     renderAvatar();
+    renderCups();
     render();
     renderItemList("medicine"); renderItemList("supplement");
   } catch (e) { showToast(toFriendlyError(e), false); }
@@ -520,6 +610,12 @@ async function addRecord(source, amount) {
     const now = new Date();
     const rec = await storage.addWaterLog({ source, amount, logDate: selectedDate, recordedAt: now });
     records.push({ id: rec.id, source, amount, logDate: selectedDate, recordedAt: now });
+    // 音效与震动反馈
+    if (appSettings.soundEnabled) playWaterSound();
+    if (appSettings.vibrationEnabled) vibrate(30);
+    // 检查是否完成目标
+    const total = records.reduce((s, r) => s + Number(r.amount), 0);
+    if (total >= dailyGoal && appSettings.soundEnabled) playCompleteSound();
     render(); showToast(`已记录 ${amount} ml`, false);
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
@@ -1220,6 +1316,312 @@ function exportData() {
   } catch (e) {
     showToast("导出失败", false);
   }
+}
+
+// ========== i18n（多语言）==========
+function updatePageLanguage() {
+  const lang = getLang();
+  // 更新带 data-i18n 属性的元素
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.dataset.i18n;
+    const text = t(key, lang);
+    if (text) el.textContent = text;
+  });
+  // 更新特定元素
+  if (E.profileReminderStatus && reminderSettings) {
+    E.profileReminderStatus.textContent = reminderSettings.enabled ? (lang === "zh" ? "已开启" : "On") : (lang === "zh" ? "已关闭" : "Off");
+  }
+  if (E.profileLogoutButton) {
+    if (currentUser) {
+      E.profileLogoutButton.textContent = lang === "zh" ? "🚪 退出登录" : "🚪 Sign Out";
+    } else {
+      E.profileLogoutButton.textContent = lang === "zh" ? "🔐 登录以同步数据" : "🔐 Sign in to sync";
+    }
+  }
+  // 更新标题
+  document.title = t("appTitle", lang);
+  // 更新各区域标题
+  const tabLabels = {
+    water: t("waterTab", lang),
+    medicine: t("medicineTab", lang),
+    supplement: t("supplementTab", lang),
+  };
+  const activeTab = E.waterPanel.hidden ? (E.medicinePanel.hidden ? "supplement" : "medicine") : "water";
+  const topbarH1 = document.querySelector(".topbar h1");
+  if (topbarH1) topbarH1.textContent = tabLabels[activeTab];
+}
+
+// ========== 水杯管理 ==========
+function renderCups() {
+  const grid = document.querySelector(".source-grid");
+  if (!grid) return;
+  const cups = userCups.length > 0 ? userCups : DEFAULT_CUPS;
+  grid.innerHTML = cups.map((cup, i) => {
+    const isDefault = i < 3;
+    const iconHtml = i === 0
+      ? `<span class="source-icon glass-icon" aria-hidden="true"><span class="glass-water"></span></span>`
+      : `<span class="source-icon bottle-icon ${i === 2 ? 'purified' : 'natural'}" aria-hidden="true"><span class="bottle-cap"></span><span class="bottle-label">${i === 1 ? '天然水' : '纯净水'}</span></span>`;
+    return `<button class="source-card ${i === 0 ? 'cup-card' : 'bottle-card'} ${i === 2 ? 'purified' : (i === 1 ? 'natural' : '')}" type="button" data-amount="${cup.amount}" data-source="${esc(cup.name)}" data-cup-index="${i}">
+      ${iconHtml}
+      <span class="source-name">${esc(cup.name)}</span>
+      <strong>${cup.amount} ml</strong>
+      <span class="add-mark">+</span>
+    </button>`;
+  }).join("");
+
+  // 重新绑定事件
+  grid.querySelectorAll(".source-card").forEach(btn => {
+    btn.addEventListener("click", () => addRecord(btn.dataset.source, Number(btn.dataset.amount)));
+  });
+}
+
+function openCupEditor() {
+  E.profileDialog.close();
+  E.cupList.innerHTML = userCups.map((cup, i) => `
+    <div class="cup-edit-item">
+      <span>${esc(cup.name)}</span>
+      <span class="cup-amount">${cup.amount} ml</span>
+      <button class="cup-delete-btn" data-cup-idx="${i}" type="button" ${userCups.length <= 1 ? 'disabled' : ''}>×</button>
+    </div>
+  `).join("");
+  E.cupList.querySelectorAll(".cup-delete-btn").forEach(btn => {
+    btn.addEventListener("click", () => deleteCup(parseInt(btn.dataset.cupIdx)));
+  });
+  E.newCupName.value = "";
+  E.newCupAmount.value = 300;
+  E.cupDialog.showModal();
+}
+
+function addCustomCup() {
+  const name = E.newCupName.value.trim();
+  const amount = parseInt(E.newCupAmount.value) || 300;
+  if (!name) { showToast("请输入水杯名称", false); return; }
+  userCups.push({ name, amount });
+  storage.saveCups(userCups);
+  renderCups();
+  E.newCupName.value = "";
+  E.newCupAmount.value = 300;
+  openCupEditor();
+  showToast(`已添加 "${name}"`, false);
+}
+
+function deleteCup(idx) {
+  if (userCups.length <= 1) return;
+  const cup = userCups[idx];
+  userCups.splice(idx, 1);
+  storage.saveCups(userCups);
+  renderCups();
+  openCupEditor();
+  showToast(`已删除 "${cup.name}"`, true);
+}
+
+// ========== 智能推荐 ==========
+function updateSmartGoal() {
+  const weight = parseFloat(E.smartWeight.value) || 65;
+  const activity = E.smartActivity.value || "mid";
+  const rates = { low: 30, mid: 35, high: 42 };
+  const goal = Math.round(weight * (rates[activity] || 35) / 50) * 50;
+  E.smartResult.innerHTML = `推荐目标：<strong>${goal} ml</strong>`;
+}
+
+// ========== 提醒 ==========
+function openReminderDialog() {
+  E.reminderEnabled.checked = reminderSettings.enabled;
+  renderReminderTimes();
+  E.reminderDialog.showModal();
+}
+
+function renderReminderTimes() {
+  E.reminderTimesList.innerHTML = reminderSettings.times.map((time, i) => `
+    <div class="reminder-time-item">
+      <input type="time" value="${time}" data-rem-idx="${i}" />
+      <button class="reminder-delete-btn" data-rem-idx="${i}" type="button" ${reminderSettings.times.length <= 1 ? 'disabled' : ''}>×</button>
+    </div>
+  `).join("");
+  // 绑定时间变更
+  E.reminderTimesList.querySelectorAll("input[type='time']").forEach(input => {
+    input.addEventListener("change", () => {
+      const idx = parseInt(input.dataset.remIdx);
+      if (!isNaN(idx)) reminderSettings.times[idx] = input.value;
+    });
+  });
+  // 绑定删除
+  E.reminderTimesList.querySelectorAll(".reminder-delete-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (reminderSettings.times.length <= 1) return;
+      const idx = parseInt(btn.dataset.remIdx);
+      reminderSettings.times.splice(idx, 1);
+      renderReminderTimes();
+    });
+  });
+}
+
+async function saveReminderSettings() {
+  // 收集所有时间输入
+  E.reminderTimesList.querySelectorAll("input[type='time']").forEach(input => {
+    const idx = parseInt(input.dataset.remIdx);
+    if (!isNaN(idx)) reminderSettings.times[idx] = input.value;
+  });
+  reminderSettings.enabled = E.reminderEnabled.checked;
+  // 去重排序
+  reminderSettings.times = [...new Set(reminderSettings.times)].sort();
+  await storage.updateReminder(reminderSettings);
+  E.reminderDialog.close();
+  // 更新状态显示
+  if (E.profileReminderStatus) {
+    E.profileReminderStatus.textContent = reminderSettings.enabled ? (getLang() === "zh" ? "已开启" : "On") : (getLang() === "zh" ? "已关闭" : "Off");
+  }
+  if (reminderSettings.enabled) {
+    if (Notification.permission === "default") {
+      const result = await Notification.requestPermission();
+      if (result !== "granted") showToast(t("remindPermission"), false);
+    }
+    startReminderCheck();
+    showToast(t("remindersSaved"), false);
+  } else {
+    stopReminderCheck();
+    showToast(t("remindersSaved"), false);
+  }
+}
+
+function startReminderCheck() {
+  stopReminderCheck();
+  if (!reminderSettings.enabled || reminderSettings.times.length === 0) return;
+  // 每 60 秒检查一次
+  reminderInterval = setInterval(checkReminders, 60000);
+  // 启动时立即检查一次
+  checkReminders();
+}
+
+function stopReminderCheck() {
+  if (reminderInterval) { clearInterval(reminderInterval); reminderInterval = null; }
+}
+
+function checkReminders() {
+  if (!reminderSettings.enabled) return;
+  if (Notification.permission !== "granted") return;
+  const now = new Date();
+  const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  // 检查是否匹配任意提醒时间（允许 ±1 分钟误差）
+  for (const rt of reminderSettings.times) {
+    const [rh, rm] = rt.split(":").map(Number);
+    const diff = Math.abs((now.getHours() * 60 + now.getMinutes()) - (rh * 60 + rm));
+    if (diff <= 1) {
+      // 避免同一分钟重复通知
+      const lastKey = `last_reminder_${rt}`;
+      const lastDate = localStorage.getItem(lastKey);
+      const today = toDateKey(now);
+      if (lastDate === today) continue;
+      localStorage.setItem(lastKey, today);
+      new Notification(t("appTitle"), {
+        body: `💧 ${t("waterTab")} — ${t("reminder")}`,
+        icon: "/icons/icon-192.svg",
+        silent: false,
+      });
+      break;
+    }
+  }
+}
+
+// ========== 统计 ==========
+function openStats() {
+  E.statsDialog.showModal();
+  E.statsWeekTab.classList.add("active");
+  E.statsMonthTab.classList.remove("active");
+  // 延迟渲染，确保 canvas 已显示
+  setTimeout(() => renderStatsChart("week"), 150);
+}
+
+async function renderStatsChart(period) {
+  const days = period === "week" ? 7 : 30;
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    dates.push(toDateKey(d));
+  }
+  const dayData = await storage.getHistory(dates);
+
+  const labels = dates.map(dk => {
+    const d = fromDateKey(dk);
+    const weekdays = t("weekdays", getLang()).split(", ");
+    return `${d.getMonth() + 1}/${d.getDate()} ${weekdays[d.getDay()]}`;
+  });
+  const waterData = dayData.map(d => d.waterTotal);
+
+  // 饮水图表
+  if (statsChart) statsChart.destroy();
+  const ctx1 = E.waterChart.getContext("2d");
+  statsChart = new Chart(ctx1, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: t("waterIntake", getLang()) + " (ml)",
+        data: waterData,
+        backgroundColor: waterData.map(v => v >= dailyGoal ? "rgba(22,141,132,0.7)" : "rgba(102,198,179,0.5)"),
+        borderColor: waterData.map(v => v >= dailyGoal ? "#168d84" : "#66c6b3"),
+        borderWidth: 1,
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: getComputedStyle(document.body).getPropertyValue("--ink").trim() || "#173d3a" } },
+      },
+      scales: {
+        x: { ticks: { maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: "rgba(23,61,58,0.06)" } },
+      },
+    },
+  });
+
+  // 达标率图表
+  if (complianceChart) complianceChart.destroy();
+  const ctx2 = E.complianceChart.getContext("2d");
+  const medRates = dayData.map(d => {
+    const items = getFullList("medicine").filter(s => isItemActiveOnDay(s.schedule || "everyday", isWeekday(d.dateKey), d.isWorkout));
+    if (items.length === 0) return 100;
+    const done = items.filter(s => (d.medRecs.find(r => r.name === s.name)?.count || 0) >= (s.targetCount || 1)).length;
+    return Math.round((done / items.length) * 100);
+  });
+  const suppRates = dayData.map(d => {
+    const items = getFullList("supplement").filter(s => isItemActiveOnDay(s.schedule || "everyday", isWeekday(d.dateKey), d.isWorkout));
+    if (items.length === 0) return 100;
+    const done = items.filter(s => (d.suppRecs.find(r => r.name === s.name)?.count || 0) >= (s.targetCount || 1)).length;
+    return Math.round((done / items.length) * 100);
+  });
+
+  complianceChart = new Chart(ctx2, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: `💚 ${t("medicineTab", getLang())} %`, data: medRates, borderColor: "#1a8a65", backgroundColor: "rgba(26,138,101,0.1)", fill: true, tension: 0.3, pointRadius: 3 },
+        { label: `💊 ${t("supplementTab", getLang())} %`, data: suppRates, borderColor: "#168d84", backgroundColor: "rgba(22,141,132,0.1)", fill: true, tension: 0.3, pointRadius: 3 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: getComputedStyle(document.body).getPropertyValue("--ink").trim() || "#173d3a" } },
+      },
+      scales: {
+        x: { ticks: { maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
+        y: { min: 0, max: 100, grid: { color: "rgba(23,61,58,0.06)" }, ticks: { callback: v => v + "%" } },
+      },
+    },
+  });
+}
+
+// ========== 设置 ==========
+function openSettingsDialog() {
+  E.soundEnabled.checked = appSettings.soundEnabled;
+  E.vibrationEnabled.checked = appSettings.vibrationEnabled;
+  E.languageSelect.value = appSettings.language || "zh";
+  E.settingsDialog.showModal();
 }
 
 initialize();
