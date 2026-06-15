@@ -3,47 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#e8f5f1" />
+    <meta name="theme-color" content="#168d84" />
     <title>每日健康追踪</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="manifest" href="manifest.json" />
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(function() {});
+      }
+    </script>
   </head>
   <body>
-    <section class="auth-shell" id="authShell">
+    <section class="auth-shell" id="authShell" hidden>
       <div class="auth-brand">
         <span class="brand-drop" aria-hidden="true">●</span>
         <p class="eyebrow">DAILY HEALTH TRACKER</p>
         <h1>健康这件小事，<br />每天都算数。</h1>
-        <p class="auth-intro">登录后，你的饮水、药物、补剂和每日记录会安全地同步到云端。</p>
-      </div>
-
-      <div class="auth-card">
-        <div class="auth-tabs" role="tablist" aria-label="账户操作">
-          <button class="active" id="loginTab" type="button" role="tab">登录</button>
-          <button id="registerTab" type="button" role="tab">注册</button>
-        </div>
-        <form id="authForm">
-          <div>
-            <p class="eyebrow" id="authEyebrow">WELCOME BACK</p>
-            <h2 id="authTitle">登录你的账户</h2>
-          </div>
-          <label for="emailInput">邮箱</label>
-          <input class="text-field" id="emailInput" type="email" autocomplete="email" placeholder="name@example.com" required />
-          <label for="passwordInput">密码</label>
-          <input class="text-field" id="passwordInput" type="password" minlength="6" autocomplete="current-password" placeholder="至少 6 位" required />
-          <p class="form-message" id="authMessage" role="status"></p>
-          <button class="primary-button" id="authSubmit" type="submit">登录</button>
-        </form>
-        <p class="cloud-note">由 GitHub Pages 提供访问 · Firebase 认证与存储</p>
+        <p class="auth-intro">你的数据默认保存在本地浏览器中。<br />登录后可同步到云端，多设备共享。</p>
       </div>
     </section>
 
-    <main class="app-shell" id="appShell" hidden>
+    <main class="app-shell" id="appShell">
       <header class="topbar">
         <div>
           <p class="eyebrow">DAILY TRACKER</p>
           <h1>今天喝水了吗？</h1>
         </div>
         <div class="account-actions">
+          <span class="offline-badge" id="offlineBadge" hidden title="离线模式">📡 离线</span>
+          <button class="sync-button" id="syncButton" type="button" title="登录以同步数据">
+            <span id="syncIcon">☁️</span>
+            <span id="syncLabel">本地模式</span>
+          </button>
           <button class="avatar-button" id="avatarButton" type="button" aria-label="个人主页" title="个人主页">
             <span class="avatar-img" id="avatarImg"></span>
           </button>
@@ -508,6 +499,37 @@
       </div>
       <div id="historyContent" style="padding:0 28px 28px;max-height:60vh;overflow-y:auto">
         <div class="empty-state">正在加载历史记录...</div>
+      </div>
+    </dialog>
+
+    <!-- ========== 认证对话框 ========== -->
+    <dialog id="authDialog">
+      <div class="auth-dialog-content">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">CLOUD SYNC</p>
+            <h2>登录同步数据</h2>
+          </div>
+          <button class="close-button" id="authDialogClose" type="button" aria-label="关闭">×</button>
+        </div>
+        <p class="auth-dialog-intro">登录后可将本地数据同步到云端，多设备共享。</p>
+        <div class="auth-tabs" role="tablist" aria-label="账户操作">
+          <button class="active" id="loginTab" type="button" role="tab">登录</button>
+          <button id="registerTab" type="button" role="tab">注册</button>
+        </div>
+        <form id="authForm">
+          <div>
+            <p class="eyebrow" id="authEyebrow">WELCOME BACK</p>
+            <h2 id="authTitle">登录你的账户</h2>
+          </div>
+          <label for="emailInput">邮箱</label>
+          <input class="text-field" id="emailInput" type="email" autocomplete="email" placeholder="name@example.com" required />
+          <label for="passwordInput">密码</label>
+          <input class="text-field" id="passwordInput" type="password" minlength="6" autocomplete="current-password" placeholder="至少 6 位" required />
+          <p class="form-message" id="authMessage" role="status"></p>
+          <button class="primary-button" id="authSubmit" type="submit">登录</button>
+        </form>
+        <p class="cloud-note">由 GitHub Pages 提供访问 · Firebase 认证与存储</p>
       </div>
     </dialog>
 

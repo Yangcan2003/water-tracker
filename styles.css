@@ -201,6 +201,73 @@ button {
   height: 100%;
 }
 
+/* ---- 同步按钮 ---- */
+.sync-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1.5px solid rgba(22,141,132,0.25);
+  border-radius: 20px;
+  background: rgba(255,255,255,0.7);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.sync-button:hover {
+  border-color: var(--mint-400);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+#syncIcon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ---- 离线标识 ---- */
+.offline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---- 认证对话框 ---- */
+.auth-dialog-content {
+  padding: 28px;
+}
+
+.auth-dialog-intro {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.auth-dialog-content .auth-tabs {
+  margin-bottom: 18px;
+}
+
+.auth-dialog-content .cloud-note {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#authDialog {
+  width: min(calc(100% - 32px), 430px);
+}
+
 .topbar,
 .section-heading,
 .dialog-heading {
