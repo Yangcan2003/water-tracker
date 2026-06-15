@@ -14,7 +14,7 @@ let records = [], dailyGoal = 2000, authMode = "login";
 let lastDeleted = null, toastTimer = null, requestVersion = 0;
 
 // ---- 药物 & 补剂状态 ----
-let medicineRecords = [], supplementRecords = [];
+let medicineRecords = [], supplementRecords = [], toiletRecords = [];
 let userMedicines = [], userSupplements = [];
 let currentEditItem = null;
 let isWorkoutDay = false;       // 当前选中日期是否是健身日
@@ -63,6 +63,8 @@ function $(sel) { return document.querySelector(sel); }
   "customSupplementButton","customSupplementDialog","customSupplementForm",
   "customSupplementName","customSupplementDosage","customSupplementTarget","customSupplementSchedule",
   "supplementWorkoutToggle",
+  // 厕所
+  "toiletRecordCount","toiletHistoryList",
 ].forEach(id => { E[id] = $("#"+id); });
 
 // ========== 事件绑定 ==========
@@ -138,6 +140,15 @@ E.supplementGrid.addEventListener("click", (e) => handleGridClick(e, "supplement
 E.supplementHistoryList.addEventListener("click", (e) => {
   const btn = e.target.closest(".delete-record");
   if (btn) deleteItemRecord("supplement", btn.dataset.id);
+});
+
+// 厕所记录
+document.querySelectorAll(".toilet-btn").forEach(btn => {
+  btn.addEventListener("click", () => addToiletRecord(btn.dataset.type));
+});
+E.toiletHistoryList.addEventListener("click", (e) => {
+  const btn = e.target.closest(".delete-record");
+  if (btn) deleteToiletRecord(btn.dataset.id);
 });
 
 // 药物对话框
@@ -256,7 +267,7 @@ async function initialize() {
 async function applyUser(user) {
   currentUser = user;
   if (!user) {
-    records = []; medicineRecords = []; supplementRecords = [];
+    records = []; medicineRecords = []; supplementRecords = []; toiletRecords = [];
     userMedicines = []; userSupplements = [];
     E.appShell.hidden = true; E.authShell.hidden = false;
     E.passwordInput.value = "";
@@ -319,10 +330,11 @@ async function loadDay() {
   E.historyList.innerHTML = '<div class="empty-state">正在读取云端记录...</div>';
 
   try {
-    const [waterSnap, medSnap, suppSnap] = await Promise.all([
+    const [waterSnap, medSnap, suppSnap, toiletSnap] = await Promise.all([
       getDocs(query(collection(db, "users", currentUser.uid, "waterLogs"), where("logDate", "==", selectedDate))),
       getDocs(query(collection(db, "users", currentUser.uid, "medicineLogs"), where("logDate", "==", selectedDate))),
       getDocs(query(collection(db, "users", currentUser.uid, "supplementLogs"), where("logDate", "==", selectedDate))),
+      getDocs(query(collection(db, "users", currentUser.uid, "toiletLogs"), where("logDate", "==", selectedDate))),
       loadWorkoutDay(),
     ]);
     if (version !== requestVersion) return;
@@ -335,10 +347,11 @@ async function loadDay() {
     records = waterSnap.docs.map(toRec).sort((a, b) => a.recordedAt - b.recordedAt);
     medicineRecords = medSnap.docs.map(toRec).sort((a, b) => a.recordedAt - b.recordedAt);
     supplementRecords = suppSnap.docs.map(toRec).sort((a, b) => a.recordedAt - b.recordedAt);
+    toiletRecords = toiletSnap.docs.map(toRec).sort((a, b) => a.recordedAt - b.recordedAt);
     updateWorkoutToggleUI();
   } catch (e) {
     if (version !== requestVersion) return;
-    records = []; medicineRecords = []; supplementRecords = [];
+    records = []; medicineRecords = []; supplementRecords = []; toiletRecords = [];
     showToast(toFriendlyError(e), false);
   }
   render();
@@ -375,6 +388,13 @@ async function undoDelete() {
       });
       records.splice(p.index, 0, { ...p.record, id: ref.id }); render();
     } catch (e) { showToast(toFriendlyError(e), false); }
+  } else if (p.type === "toilet") {
+    try {
+      const ref = await addDoc(collection(db, "users", currentUser.uid, "toiletLogs"), {
+        type: p.record.type, logDate: p.record.logDate, recordedAt: p.record.recordedAt,
+      });
+      toiletRecords.splice(p.index, 0, { ...p.record, id: ref.id }); renderToiletHistory();
+    } catch (e) { showToast(toFriendlyError(e), false); }
   } else {
     const arr = p.type === "medicine" ? medicineRecords : supplementRecords;
     const coll = p.type === "medicine" ? "medicineLogs" : "supplementLogs";
@@ -386,6 +406,47 @@ async function undoDelete() {
       arr.splice(p.index, 0, { ...p.record, id: ref.id }); renderItemList(p.type);
     } catch (e) { showToast(toFriendlyError(e), false); }
   }
+}
+
+// ========== 厕所记录 ==========
+async function addToiletRecord(type) {
+  if (!currentUser) return;
+  try {
+    const now = new Date();
+    const ref = await addDoc(collection(db, "users", currentUser.uid, "toiletLogs"), { type, logDate: selectedDate, recordedAt: now });
+    toiletRecords.push({ id: ref.id, type, logDate: selectedDate, recordedAt: now });
+    renderToiletHistory();
+    const label = type === "big" ? "大号" : "小号";
+    showToast(`已记录 ${label} 🧻`, false);
+  } catch (e) { showToast(toFriendlyError(e), false); }
+}
+async function deleteToiletRecord(id) {
+  const idx = toiletRecords.findIndex(r => r.id === id);
+  if (idx < 0) return;
+  const [rec] = toiletRecords.splice(idx, 1); renderToiletHistory();
+  try {
+    await deleteDoc(doc(db, "users", currentUser.uid, "toiletLogs", id));
+    lastDeleted = { record: rec, index: idx, type: "toilet" };
+    const label = rec.type === "big" ? "大号" : "小号";
+    showToast(`已删除 ${label} 记录`, true);
+  } catch (e) { toiletRecords.splice(idx, 0, rec); renderToiletHistory(); showToast(toFriendlyError(e), false); }
+}
+function renderToiletHistory() {
+  E.toiletRecordCount.textContent = `${toiletRecords.length} 条`;
+  if (toiletRecords.length === 0) {
+    E.toiletHistoryList.innerHTML = '<div class="empty-state">这一天还没有厕所记录，点击上方按钮记录吧。</div>';
+    return;
+  }
+  E.toiletHistoryList.innerHTML = [...toiletRecords].reverse().map(r => {
+    const t = new Date(r.recordedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const emoji = r.type === "big" ? "💩" : "🚽";
+    const label = r.type === "big" ? "大号" : "小号";
+    return `<article class="history-item toilet-history-item">
+      <span class="history-dot toilet-dot">${emoji}</span>
+      <div class="history-info"><strong>${label}</strong><span>${t}</span></div>
+      <button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button>
+    </article>`;
+  }).join("");
 }
 
 // ========== 药物/补剂 通用 ==========
@@ -585,7 +646,7 @@ function render() {
   E.waterFill.setAttribute("y", 190 - capped * 1.9);
   E.waterWave.setAttribute("transform", `translate(0 ${190 - capped * 1.9})`);
   E.progressMessage.textContent = getProgressMessage(total, dailyGoal);
-  renderDate(); renderHistory();
+  renderDate(); renderHistory(); renderToiletHistory();
 }
 function renderDate() {
   const sel = fromDateKey(selectedDate);
@@ -700,6 +761,16 @@ function renderItemList(type) {
   }
 }
 
+function toiletItems(toiletRecs) {
+  if (!toiletRecs || toiletRecs.length === 0) return "";
+  const big = toiletRecs.filter(r => r.type === "big").length;
+  const small = toiletRecs.filter(r => r.type === "small").length;
+  const parts = [];
+  if (big > 0) parts.push(`<span class="hist-dot" style="background:#fff0ef;color:#d84f46;font-size:10px" title="大号 ×${big}">💩</span>`);
+  if (small > 0) parts.push(`<span class="hist-dot" style="background:#e3f0fb;color:#428fcb;font-size:10px" title="小号 ×${small}">🚽</span>`);
+  return parts.join("");
+}
+
 // ========== 历史记录弹窗 ==========
 async function loadHistory() {
   if (!currentUser) return;
@@ -714,11 +785,12 @@ async function loadHistory() {
       dates.push(toDateKey(d));
     }
 
-    // 并行查询所有天的饮水、药物、补剂 + 健身日
+    // 并行查询所有天的饮水、药物、补剂、厕所 + 健身日
     const allQueries = dates.flatMap(dk => [
       getDocs(query(collection(db, "users", currentUser.uid, "waterLogs"), where("logDate", "==", dk))),
       getDocs(query(collection(db, "users", currentUser.uid, "medicineLogs"), where("logDate", "==", dk))),
       getDocs(query(collection(db, "users", currentUser.uid, "supplementLogs"), where("logDate", "==", dk))),
+      getDocs(query(collection(db, "users", currentUser.uid, "toiletLogs"), where("logDate", "==", dk))),
       getDoc(doc(db, "users", currentUser.uid, "workoutLogs", dk)),
     ]);
 
@@ -726,18 +798,20 @@ async function loadHistory() {
 
     // 解析结果
     const dayData = dates.map((dk, i) => {
-      const offset = i * 4;
+      const offset = i * 5;
       const waterSnap = results[offset];
       const medSnap = results[offset + 1];
       const suppSnap = results[offset + 2];
-      const workoutSnap = results[offset + 3];
+      const toiletSnap = results[offset + 3];
+      const workoutSnap = results[offset + 4];
 
       const waterTotal = waterSnap.docs.reduce((s, doc) => s + (doc.data().amount || 0), 0);
       const medRecs = medSnap.docs.map(d => ({ ...d.data(), count: d.data().count ?? (d.data().taken ? 1 : 0) }));
       const suppRecs = suppSnap.docs.map(d => ({ ...d.data(), count: d.data().count ?? (d.data().taken ? 1 : 0) }));
+      const toiletRecs = toiletSnap.docs.map(d => d.data());
       const isWorkout = workoutSnap.exists() && workoutSnap.data().isWorkout === true;
 
-      return { dateKey: dk, waterTotal, medRecs, suppRecs, isWorkout };
+      return { dateKey: dk, waterTotal, medRecs, suppRecs, toiletRecs, isWorkout };
     });
 
     // 渲染
@@ -797,6 +871,7 @@ async function loadHistory() {
         </div>
         <div class="hist-col"><span class="hist-label">💚</span>${medItems || '<span class="hist-empty">—</span>'}</div>
         <div class="hist-col"><span class="hist-label">💊</span>${suppItems || '<span class="hist-empty">—</span>'}</div>
+        <div class="hist-col"><span class="hist-label">🧻</span>${toiletItems(day.toiletRecs) || '<span class="hist-empty">—</span>'}</div>
       </div>`;
     }).join("");
 
