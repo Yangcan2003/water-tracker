@@ -101,8 +101,8 @@ if (E.syncButton) E.syncButton.addEventListener("click", () => {
 
 // 个人主页
 E.avatarButton.addEventListener("click", openProfile);
-E.profileGoalButton.addEventListener("click", () => { E.profileDialog.close(); E.goalInput.value = dailyGoal; E.goalDialog.showModal(); setTimeout(() => E.goalInput.select(), 50); });
-E.profileHistoryButton.addEventListener("click", () => { E.profileDialog.close(); loadHistory(); E.historyDialog.showModal(); });
+E.profileGoalButton.addEventListener("click", () => { E.profileDialog.close(); E.goalInput.value = dailyGoal; addBackButton(E.goalDialog, openProfile); E.goalDialog.showModal(); setTimeout(() => E.goalInput.select(), 50); });
+E.profileHistoryButton.addEventListener("click", () => { E.profileDialog.close(); loadHistory(); addBackButton(E.historyDialog, openProfile); E.historyDialog.showModal(); });
 E.profileExportButton.addEventListener("click", exportData);
 E.profileLogoutButton.addEventListener("click", () => { E.profileDialog.close(); if (currentUser) { signOut(auth); } else { setAuthMode("login"); E.authDialog.showModal(); } });
 E.editAvatarButton.addEventListener("click", openAvatarEditor);
@@ -209,18 +209,18 @@ E.medicineHistoryList.addEventListener("click", (e) => {
 if (E.addCupBtn) E.addCupBtn.addEventListener("click", addCustomCup);
 if (E.editCupsBtn) E.editCupsBtn.addEventListener("click", openCupEditor);
 // 统计
-if (E.profileStatsButton) E.profileStatsButton.addEventListener("click", () => { E.profileDialog.close(); openStats(); });
+if (E.profileStatsButton) E.profileStatsButton.addEventListener("click", () => { E.profileDialog.close(); addBackButton(E.statsDialog, openProfile); openStats(); });
 if (E.statsWeekTab) E.statsWeekTab.addEventListener("click", () => { E.statsWeekTab.classList.add("active"); E.statsMonthTab.classList.remove("active"); renderStatsChart("week"); });
 if (E.statsMonthTab) E.statsMonthTab.addEventListener("click", () => { E.statsMonthTab.classList.add("active"); E.statsWeekTab.classList.remove("active"); renderStatsChart("month"); });
 // 提醒
-if (E.profileReminderButton) E.profileReminderButton.addEventListener("click", () => { E.profileDialog.close(); openReminderDialog(); });
+if (E.profileReminderButton) E.profileReminderButton.addEventListener("click", () => { E.profileDialog.close(); addBackButton(E.reminderDialog, openProfile); openReminderDialog(); });
 if (E.addReminderTimeBtn) E.addReminderTimeBtn.addEventListener("click", () => {
   reminderSettings.times.push("12:00");
   renderReminderTimes();
 });
 if (E.saveReminderBtn) E.saveReminderBtn.addEventListener("click", saveReminderSettings);
 // 设置
-if (E.profileSettingsButton) E.profileSettingsButton.addEventListener("click", () => { E.profileDialog.close(); openSettingsDialog(); });
+if (E.profileSettingsButton) E.profileSettingsButton.addEventListener("click", () => { E.profileDialog.close(); addBackButton(E.settingsDialog, openProfile); openSettingsDialog(); });
 if (E.soundEnabled) E.soundEnabled.addEventListener("change", () => { appSettings.soundEnabled = E.soundEnabled.checked; storage.updateSettings(appSettings); });
 if (E.vibrationEnabled) E.vibrationEnabled.addEventListener("change", () => { appSettings.vibrationEnabled = E.vibrationEnabled.checked; storage.updateSettings(appSettings); });
 if (E.languageSelect) E.languageSelect.addEventListener("change", () => {
@@ -580,6 +580,7 @@ function openAvatarEditor() {
   E.avatarUrlInput.value = avatarType === "custom" ? avatarUrl : "";
   updateAvatarPreview();
   E.profileDialog.close();
+  addBackButton(E.avatarDialog, openProfile);
   E.avatarDialog.showModal();
 }
 
@@ -1285,6 +1286,25 @@ function renderDayDetail(day) {
     <div class="detail-section"><h3>💚 药物记录</h3>${medItems}</div>
     <div class="detail-section"><h3>💊 补剂记录</h3>${suppItems}</div>
     <div class="detail-section"><h3>🧻 厕所记录</h3>${toiletItemsHtml}</div>`;
+}
+
+// ========== 返回按钮辅助 ==========
+function addBackButton(dialog, targetFn) {
+  const heading = dialog.querySelector(".dialog-heading");
+  if (!heading) return;
+  // 避免重复添加
+  if (heading.querySelector(".back-btn")) return;
+  const btn = document.createElement("button");
+  btn.className = "text-button back-btn";
+  btn.type = "button";
+  btn.textContent = "← 返回";
+  btn.addEventListener("click", () => {
+    dialog.close();
+    if (targetFn) targetFn();
+  });
+  heading.insertBefore(btn, heading.firstChild);
+  // 给 heading 加点 flex 适配
+  heading.style.gap = "10px";
 }
 
 // ========== 工具 ==========
