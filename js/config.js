@@ -28,8 +28,8 @@ export const DEFAULT_SUPPLEMENTS = [
   { name: "维生素B6", dosage: "1片/次", targetCount: 1, schedule: "weekday", emoji: "💛" },
   { name: "鱼油", dosage: "1粒/次", targetCount: 1, schedule: "weekday", emoji: "🐟" },
   { name: "镁", dosage: "1粒/次", targetCount: 1, schedule: "everyday", emoji: "🔵" },
-  { name: "锌片", dosage: "1粒/次", targetCount: 1, schedule: "workout", emoji: "🔋" },
-  { name: "肌酸", dosage: "5g/次", targetCount: 1, schedule: "workout", emoji: "💪" },
+  { name: "锌片", dosage: "1粒/次", targetCount: 1, schedule: "workout_weekday", emoji: "🔋" },
+  { name: "肌酸", dosage: "5g/次", targetCount: 1, schedule: "workout_weekday", emoji: "💪" },
 ];
 
 // 本地存储键名

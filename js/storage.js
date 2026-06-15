@@ -20,12 +20,50 @@ class StorageManager {
   _loadLocal() {
     try {
       const raw = localStorage.getItem(LS_KEY);
-      return raw ? JSON.parse(raw) : this._emptyData();
-    } catch (e) { return this._emptyData(); }
+      if (!raw) return this._emptyData();
+      const data = JSON.parse(raw);
+      // 基本结构校验
+      if (!data || typeof data !== "object" || !data.profile || !data.records) {
+        console.warn("[Storage] 本地数据格式异常，已重置", data);
+        return this._emptyData();
+      }
+      return data;
+    } catch (e) {
+      console.warn("[Storage] 本地数据损坏，已重置", e);
+      return this._emptyData();
+    }
   }
 
   _saveLocal(data) {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (e) { /* quota exceeded */ }
+    try {
+      const json = JSON.stringify(data);
+      localStorage.setItem(LS_KEY, json);
+      return true;
+    } catch (e) {
+      // quota 超限：尝试清理 90 天前的旧记录
+      console.warn("[Storage] 存储空间不足，尝试清理旧数据...");
+      const pruned = this._pruneOldRecords(data, 90);
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(pruned));
+        return true;
+      } catch (e2) {
+        console.error("[Storage] 清理后仍无法保存，数据可能丢失", e2);
+        return false;
+      }
+    }
+  }
+
+  _pruneOldRecords(data, daysToKeep) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysToKeep);
+    const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
+    const newRecords = {};
+    for (const dk of Object.keys(data.records || {})) {
+      if (dk >= cutoffKey) newRecords[dk] = data.records[dk];
+    }
+    const removed = Object.keys(data.records || {}).length - Object.keys(newRecords).length;
+    if (removed > 0) console.warn(`[Storage] 已清理 ${removed} 天旧记录`);
+    return { ...data, records: newRecords, meta: { ...data.meta, prunedAt: new Date().toISOString() } };
   }
 
   _emptyData() {

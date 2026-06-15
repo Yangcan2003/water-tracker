@@ -342,6 +342,11 @@
             <span>历史记录</span>
             <span class="profile-action-arrow">›</span>
           </button>
+          <button class="profile-action-btn" id="profileExportButton" type="button">
+            <span class="profile-action-icon">📥</span>
+            <span>导出数据</span>
+            <span class="profile-action-arrow">›</span>
+          </button>
           <button class="profile-action-btn profile-logout-btn" id="profileLogoutButton" type="button">
             <span class="profile-action-icon">🚪</span>
             <span>退出登录</span>
@@ -447,7 +452,8 @@
         <select class="text-field" id="customSupplementSchedule">
           <option value="everyday">每天</option>
           <option value="weekday">仅工作日（周一~周五）</option>
-          <option value="workout">仅健身日</option>
+          <option value="workout">仅健身日（不限星期）</option>
+          <option value="workout_weekday">仅工作日健身日</option>
         </select>
         <button class="primary-button" value="default" type="submit">添加补剂</button>
         <button class="danger-button" id="deleteSupplementBtn" type="button" style="display:none;margin-top:8px">删除此补剂</button>
@@ -482,7 +488,8 @@
         <select class="text-field" id="customMedicineSchedule">
           <option value="everyday">每天</option>
           <option value="weekday">仅工作日（周一~周五）</option>
-          <option value="workout">仅健身日</option>
+          <option value="workout">仅健身日（不限星期）</option>
+          <option value="workout_weekday">仅工作日健身日</option>
         </select>
         <button class="primary-button" value="default" type="submit">添加药物</button>
         <button class="danger-button" id="deleteMedicineBtn" type="button" style="display:none;margin-top:8px">删除此药物</button>
