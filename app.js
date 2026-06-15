@@ -1032,7 +1032,10 @@ function renderItemList(type) {
   (isMed ? E.medicinePercent : E.supplementPercent).textContent = `${percent}%`;
 
   const workoutRow = isMed ? document.querySelector("#medicineWorkoutRow") : document.querySelector("#supplementWorkoutRow");
-  const hasWorkoutItems = fullList.some(s => (s.schedule || "everyday") === "workout");
+  const hasWorkoutItems = fullList.some(s => {
+    const sch = s.schedule || "everyday";
+    return sch === "workout" || sch === "workout_weekday";
+  });
   if (workoutRow) workoutRow.style.display = hasWorkoutItems ? "" : "none";
 
   const grid = isMed ? E.medicineGrid : E.supplementGrid;
