@@ -37,3 +37,36 @@ test("large histories summarize all recorded dates instead of truncating to rece
   assert.equal(context.days.reduce((sum, item) => sum + item.water.totalMl, 0), 200000);
   assert.match(context.note, /原始明细/);
 });
+
+test("fresh context carries saved meal nutrition, today's totals and user targets without inventing missing values", () => {
+  const now = new Date(2026, 9, 17, 22, 30), options = { rangeDays: "all", categories: ["meal"], compact: true, now,
+    profile: { nutritionGoal: { weightKg: 70, ratios: { carbsG: 3, proteinG: 1.6, fatG: 0.8 } }, email: "private-email" } };
+  const days = [{ dateKey: "2026-10-17", mealRecs: [
+    { name: "晚餐", nutrition: { kcal: 800, carbsG: 60, proteinG: 30, fatG: 77, portion: "一份", source: "ai", token: "private-token" }, photos: ["private-photo"] },
+    { name: "未估算的小食" },
+  ] }, { dateKey: "2026-10-16", mealRecs: [{ name: "昨天", nutrition: { kcal: 600, carbsG: 50, proteinG: 20, fatG: 20 } }] }];
+  const before = buildHealthContext(days, options);
+  assert.equal(before.snapshot.localDate, "2026-10-17"); assert.equal(before.snapshot.generatedAt, now.toISOString());
+  assert.equal(before.todayNutrition.fatG, 77); assert.equal(before.todayNutrition.counted, 1); assert.equal(before.todayNutrition.missing, 1);
+  assert.equal(before.todayNutrition.estimatedEntries, 1); assert.equal(before.days[0].meal.entries[0].nutrition.portion, "一份");
+  assert.deepEqual(before.dailyNutritionTargetsG, { carbsG: 210, proteinG: 112, fatG: 56 });
+  assert.ok(!JSON.stringify(before).includes("private-"));
+  days[0].mealRecs[0].nutrition.fatG = 85;
+  assert.equal(buildHealthContext(days, options).todayNutrition.fatG, 85);
+  const unknown = buildHealthContext([{ dateKey: "2026-10-17", mealRecs: [{ name: "未知" }] }], options);
+  assert.equal(unknown.todayNutrition.fatG, null); assert.equal(unknown.todayNutrition.missing, 1);
+  const excluded = buildHealthContext(days, { ...options, categories: ["water"] });
+  assert.equal(excluded.todayNutrition, undefined); assert.equal(excluded.dailyNutritionTargetsG, undefined);
+});
+
+test("all-history compression preserves today's nutrition and totals from every older date", () => {
+  const days = Array.from({ length: 500 }, (_, index) => {
+    const date = new Date(2025, 0, 1 + index), dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return { dateKey, mealRecs: [{ name: "食物".repeat(80), nutrition: { kcal: 100, carbsG: 10, proteinG: 5, fatG: 3 } }] };
+  });
+  days.push({ dateKey: "2026-10-17", mealRecs: [{ name: "今天", nutrition: { kcal: 500, carbsG: 50, proteinG: 20, fatG: 85 } }] });
+  const context = buildHealthContext(days, { rangeDays: "all", categories: ["meal"], compact: true, now: new Date(2026, 9, 17) });
+  assert.ok(context.summarized); assert.ok(JSON.stringify(context).length <= 18000);
+  assert.equal(context.todayNutrition.fatG, 85);
+  assert.equal(context.days.reduce((sum, day) => sum + day.meal.nutrition.fatG, 0), 1585);
+});

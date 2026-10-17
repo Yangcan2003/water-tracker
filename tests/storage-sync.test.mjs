@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { historyRange } from "../js/history-range.js";
 import { loadDaySnapshot } from "../js/day-loader.js";
+import { buildHealthContext } from "../js/assistant-context.js";
 
 const result = await build({
   stdin: { contents: 'export { storage } from "./js/storage.js"; export { mock } from "./tests/firebase-mock.mjs";', resolveDir: process.cwd() },
@@ -387,6 +388,42 @@ test("week and month query only their range, without showing partial local or al
   assert.equal((await storage.getHistoryRange(month)).length, 30);
   assert.strictEqual(await storage.getHistoryRange(week), weekDays);
   assert.equal(mock.queries.length, 12);
+});
+
+test("assistant fresh reads bypass minute caches and include a meal and target updated on another device", async () => {
+  const now = new Date(2026, 9, 17), range = { startDate: "0001-01-01", endDate: "2026-10-17" };
+  const meal = { logDate: range.endDate, name: "晚餐", nutrition: { kcal: 600, carbsG: 50, proteinG: 20, fatG: 30 } };
+  mock.documents.set("users/test/mealLogs/dinner", meal);
+  await storage.getHistoryRange(range);
+  mock.documents.set("users/test/mealLogs/dinner", { ...meal, nutrition: { ...meal.nutrition, fatG: 85 } });
+  mock.documents.set("users/test", { nutritionGoal: { weightKg: 70, ratios: { carbsG: 3, proteinG: 1.6, fatG: 0.8 } } });
+  assert.equal((await storage.getHistoryRange(range))[0].mealRecs[0].nutrition.fatG, 30);
+  const [days, profile] = await Promise.all([storage.getHistoryRange(range, { force: true }), storage.getProfile({ force: true })]);
+  const context = buildHealthContext(days, { categories: ["meal"], rangeDays: "all", profile, compact: true, now });
+  assert.equal(context.todayNutrition.fatG, 85); assert.equal(context.dailyNutritionTargetsG.fatG, 56);
+  assert.equal(days[0].mealRecs.length, 1);
+  navigator.onLine = false;
+  await assert.rejects(storage.getHistoryRange(range, { force: true }), { code: "unavailable" });
+  assert.strictEqual(await storage.getHistoryRange(range), days);
+});
+
+test("an older background read cannot overwrite a fresh assistant snapshot", async () => {
+  const original = storage._fetchAllHistory, finish = [], range = historyRange(7, new Date(2026, 9, 17));
+  storage._fetchAllHistory = () => new Promise(resolve => finish.push(resolve));
+  try {
+    const background = storage.getHistoryRange(range), fresh = storage.getHistoryRange(range, { force: true });
+    assert.equal(finish.length, 2);
+    const latest = [{ dateKey: "2026-10-17", waterTotal: 900 }];
+    finish[1](latest); await fresh;
+    finish[0]([{ dateKey: "2026-10-17", waterTotal: 300 }]); await background;
+    assert.strictEqual(storage.getCachedHistoryRange(range), latest);
+  } finally { storage._fetchAllHistory = original; }
+});
+
+test("assistant profile refresh does not silently use cached targets after a failed read", async () => {
+  mock.denied.add(undefined);
+  await assert.rejects(storage.getProfile({ force: true }));
+  assert.ok(await storage.getProfile());
 });
 
 test("empty ranges are complete caches and do not borrow older month records", async () => {

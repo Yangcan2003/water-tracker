@@ -46,6 +46,18 @@ test("OpenAI uses server-controlled Responses endpoint and credentials with stor
   assert.equal((await response.json()).reply, "记录不能代表完整健康状态。");
 });
 
+test("the current snapshot follows old replies and precedes the latest question", async () => {
+  let payload;
+  const response = await handleAI(request(body({ shareRecords: true, context: { todayNutrition: { fatG: 85 } }, messages: [
+    { role: "user", content: "脂肪多少" }, { role: "assistant", content: "之前没有营养数据" }, { role: "user", content: "我刚更新了，重新看一下" },
+  ] })), env, async (url, options) => {
+    if (url.includes("identitytoolkit")) return identity("test-user");
+    payload = JSON.parse(options.body); return model("已使用本轮记录");
+  });
+  assert.equal(response.status, 200); assert.equal(payload.input[1].content, "之前没有营养数据");
+  assert.match(payload.input.at(-2).content, /"fatG":85/); assert.equal(payload.input.at(-1).content, "我刚更新了，重新看一下");
+});
+
 test("email authorization requires the allowlisted, verified email returned by Firebase", async () => {
   const config = { ...env, AI_ALLOWED_UIDS: "", AI_ALLOWED_EMAILS: " Owner@Example.com " };
   const metadata = await (await handleAI(new Request("https://test.invalid/api/ai"), config)).json();

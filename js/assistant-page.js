@@ -149,10 +149,14 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       let context = null;
       if (share.checked) {
         setProgress("正在读取健康记录…"); renderMessages();
-        const days = await wait(storage.getHistoryRange(assistantHistoryRange(range.value)));
+        const snapshotAt = new Date();
+        const [days, profile] = await wait(Promise.all([
+          storage.getHistoryRange(assistantHistoryRange(range.value, snapshotAt), { force: true }),
+          storage.getProfile({ force: true }),
+        ]));
         if (storage.syncStatus.failures.some(item => item.kind === "read")) throw new Error("部分健康记录尚未同步。请稍后重试，或关闭健康记录后提问。");
         checkAborted(active.signal); if (version !== generation || getUser()?.uid !== user.uid) return;
-        context = buildHealthContext(days, { rangeDays: range.value === "all" ? "all" : Number(range.value), categories: CATEGORIES, bodyMeasurements: storage.getCachedBodyMeasurements(), profile: storage.getCachedProfile?.(), compact: true });
+        context = buildHealthContext(days, { rangeDays: range.value === "all" ? "all" : Number(range.value), categories: CATEGORIES, bodyMeasurements: storage.getCachedBodyMeasurements(), profile, compact: true, now: snapshotAt });
       }
       const token = plan ? undefined : await wait(user.getIdToken(refreshToken));
       checkAborted(active.signal); if (version !== generation || getUser()?.uid !== user.uid) return;
@@ -162,7 +166,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       const result = await wait(request(backend, { method: "POST", token, signal: active.signal, body: { provider: "openai", messages: [...history, { role: "user", content: question }], shareRecords: share.checked, context } }));
       if (version !== generation || getUser()?.uid !== user.uid) return;
       if (typeof result.reply !== "string" || !result.reply.trim()) throw new Error("暂未收到回答，请重试。");
-      const source = context ? `${context.range.startDate} — ${context.range.endDate} · ${context.summarized ? "健康记录摘要" : "健康记录"}` : "";
+      const source = context ? `${new Date(context.snapshot.generatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 读取 · ${context.range.startDate} — ${context.range.endDate} · ${context.summarized ? "健康记录摘要" : "健康记录"}` : "";
       messages.push({ role: "user", content: question }, { role: "assistant", content: result.reply.slice(0, 6000), source: [source, result.incomplete || result.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
     } catch (error) {
       if (version !== generation) return;

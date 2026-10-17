@@ -335,13 +335,14 @@ class StorageManager {
   }
 
   // ========== Profile ==========
-  async getProfile() {
+  async getProfile({ force = false } = {}) {
     if (this.isCloud) {
       const generation = this.sync.generation;
       const revision = this.profileRevision;
       const uid = this.currentUser.uid;
       try {
         const snap = await getDoc(doc(this.db, "users", uid));
+        if (force && snap.metadata?.fromCache) throw Object.assign(new Error("无法刷新云端档案，请联网后重试"), { code: "unavailable" });
         if (generation !== this.sync.generation) return this._loadLocal().profile;
         const cloud = snap.data() || {};
         // 合并到本地缓存
@@ -366,6 +367,7 @@ class StorageManager {
         void this._syncBodyMeasurements().catch(() => {});
         return data.profile;
       } catch (e) {
+        if (force) throw e;
         // 降级到本地
         if (generation === this.sync.generation) void this._syncBodyMeasurements().catch(() => {});
         return this._loadLocal().profile;
@@ -944,27 +946,31 @@ class StorageManager {
     } catch { /* Quota failures leave the in-memory snapshot available. */ }
   }
 
-  async getHistoryRange(range) {
+  async getHistoryRange(range, { force = false } = {}) {
     const key = `${range.startDate}:${range.endDate}`;
     const revision = this.historyRevision, generation = this.sync.generation;
     const cached = this.historyRanges.get(key);
     if (this.isCloud && !navigator.onLine) {
+      if (force) throw Object.assign(new Error("无法刷新健康记录，请联网后重试"), { code: "unavailable" });
       if (cached) return cached.days;
       throw Object.assign(new Error("本月记录尚未缓存，请联网后重试"), { code: "unavailable" });
     }
-    if (cached?.revision === revision && Date.now() - cached.loadedAt < 60_000) return cached.days;
+    if (!force && cached?.revision === revision && Date.now() - cached.loadedAt < 60_000) return cached.days;
     const pending = this.historyRangeRequests.get(key);
-    if (pending?.revision === revision) return pending.promise;
+    if (pending?.revision === revision && (!force || pending.force)) return pending.promise;
 
     const promise = this._fetchAllHistory(range).then(days => {
-      if (generation !== this.sync.generation || revision !== this.historyRevision) return this.getHistoryRange(range);
-      this.historyRanges.set(key, { days, revision, loadedAt: Date.now() });
-      this._persistHistoryRanges();
+      if (generation !== this.sync.generation || revision !== this.historyRevision) return this.getHistoryRange(range, { force });
+      // An older background read must not overwrite a fresh assistant snapshot.
+      if (this.historyRangeRequests.get(key)?.promise === promise) {
+        this.historyRanges.set(key, { days, revision, loadedAt: Date.now() });
+        this._persistHistoryRanges();
+      }
       return days;
     }).finally(() => {
       if (this.historyRangeRequests.get(key)?.promise === promise) this.historyRangeRequests.delete(key);
     });
-    this.historyRangeRequests.set(key, { revision, promise });
+    this.historyRangeRequests.set(key, { revision, promise, force });
     return promise;
   }
 

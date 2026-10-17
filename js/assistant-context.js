@@ -1,6 +1,8 @@
 import { historyRange, inHistoryRange } from "./history-range.js";
 import { measurementHistory } from "./body-measurements.js";
 import { toDateKey } from "./utils.js";
+import { dailyMealNutrition, normalizeMealNutrition } from "./meal-nutrition.js";
+import { nutritionTargets } from "./nutrition-goals.js";
 
 export const ASSISTANT_CATEGORIES = [
   { key: "water", label: "饮水" }, { key: "meal", label: "饮食" }, { key: "workout", label: "训练" },
@@ -16,6 +18,17 @@ function time(record) {
 }
 function logList(records, map) {
   return { count: records.length, entries: records.slice(0, 30).map(map), omitted: Math.max(0, records.length - 30) };
+}
+function mealNutrition(record) {
+  const value = normalizeMealNutrition(record.nutrition);
+  if (!value) return null;
+  return { kcal: value.kcal, carbsG: value.carbsG, proteinG: value.proteinG, fatG: value.fatG,
+    portion: text(value.portion), note: text(value.note), source: value.source, estimatedAt: text(value.estimatedAt) };
+}
+function nutritionSummary(records) {
+  return { ...dailyMealNutrition(records), estimatedEntries: records.filter(record => {
+    const value = normalizeMealNutrition(record.nutrition); return value && value.source === "ai";
+  }).length };
 }
 
 export function assistantHistoryRange(days, now = new Date()) {
@@ -33,7 +46,7 @@ export function buildHealthContext(days, { rangeDays = 7, categories = ["water",
   const snapshots = selectedDays.map(day => {
     const result = { date: day.dateKey };
     if (selected.includes("water") && day.waterRecs?.length) result.water = { totalMl: day.waterRecs.reduce((sum, record) => sum + (number(record.amount) || 0), 0), ...logList(day.waterRecs, record => ({ ml: number(record.amount), time: time(record) })) };
-    if (selected.includes("meal") && day.mealRecs?.length) result.meal = logList(day.mealRecs, record => ({ type: text(record.mealType), name: text(record.name), note: text(record.note), time: time(record) }));
+    if (selected.includes("meal") && day.mealRecs?.length) result.meal = { ...logList(day.mealRecs, record => ({ type: text(record.mealType), name: text(record.name), note: text(record.note), time: time(record), nutrition: mealNutrition(record) })), nutrition: nutritionSummary(day.mealRecs) };
     if (selected.includes("workout") && (day.isWorkout || Object.keys(day.workoutDetail || {}).length)) {
       const detail = day.workoutDetail || {};
       result.workout = { markedWorkoutDay: !!day.isWorkout, activity: text(detail.activity), durationMinutes: number(detail.duration), focus: text(detail.focus), intensity: text(detail.intensity), note: text(detail.note) };
@@ -44,7 +57,11 @@ export function buildHealthContext(days, { rangeDays = 7, categories = ["water",
     if (selected.includes("toilet") && day.toiletRecs?.length) result.toilet = logList(day.toiletRecs, record => ({ type: text(record.type), time: time(record) }));
     return result;
   }).filter(day => Object.keys(day).length > 1);
-  const context = { range, categories: selected, units: { water: "ml", height: "cm", weight: "kg", bodyFat: "%", duration: "minutes" }, note: "仅包含用户选择的已记录数据。缺失日期或类别不表示零摄入、未服用或未训练；今天的记录可能尚未完成。entries 有上限时 omitted 为省略数量。", days: snapshots };
+  const context = { snapshot: { generatedAt: now.toISOString(), localDate: toDateKey(now), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }, range, categories: selected, units: { water: "ml", height: "cm", weight: "kg", bodyFat: "%", duration: "minutes", energy: "kcal", carbs: "g", protein: "g", fat: "g" }, note: "本轮提问读取的记录快照，更新同日数值时以本轮为准，不能沿用旧回答中的数据。仅包含用户选择的已记录数据。缺失日期或类别不表示零摄入、未服用或未训练；今天的记录可能尚未完成。entries 有上限时 omitted 为省略数量。营养总量仅合计有营养数值的条目，missing 是未记录营养的条目数；estimatedEntries 是估算条目数，不等于精确测量。", days: snapshots };
+  if (selected.includes("meal")) {
+    context.todayNutrition = { date: toDateKey(now), ...nutritionSummary(selectedDays.filter(day => day.dateKey === toDateKey(now)).flatMap(day => day.mealRecs || [])) };
+    context.dailyNutritionTargetsG = nutritionTargets(profile?.nutritionGoal);
+  }
   const selectedMeasurements = measurements.filter(item => inHistoryRange(item.date, range));
   if (selected.includes("body")) {
     context.bodyMeasurements = selectedMeasurements.slice(0, compact ? selectedMeasurements.length : 60).map(item => ({ date: item.date, height: item.height ?? null, weight: item.weight ?? null, bodyFat: item.bodyFat ?? null }));
@@ -91,7 +108,7 @@ function summarizeDays(days, selected, period) {
       const type = ["breakfast", "lunch", "dinner", "snack"].includes(record.mealType) ? record.mealType : "other";
       meals.set(`${day.dateKey}:${type}`, type);
     }
-    if (records.length) result.meal = { entries: records.length, mealsRecorded: meals.size, byType: [...meals.values()].reduce((types, type) => { types[type] = (types[type] || 0) + 1; return types; }, {}) };
+    if (records.length) result.meal = { entries: records.length, mealsRecorded: meals.size, byType: [...meals.values()].reduce((types, type) => { types[type] = (types[type] || 0) + 1; return types; }, {}), nutrition: nutritionSummary(records) };
   }
   if (selected.includes("workout")) {
     const records = days.filter(day => day.isWorkout || Object.keys(day.workoutDetail || {}).length);
