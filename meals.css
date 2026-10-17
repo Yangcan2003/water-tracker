@@ -1,0 +1,244 @@
+/* The diary uses the app palette, with clear surfaces and compact meal groups. */
+#mealPanel { --diary-accent: var(--theme-accent); --diary-soft: var(--theme-soft); --diary-text: var(--theme-text); --diary-muted: var(--theme-muted); --diary-line: var(--theme-line); padding-bottom: 12px; }
+#mealPanel svg, #mealDialog svg, #mealActionsDialog svg { display: block; width: 22px; height: 22px; flex-shrink: 0; }
+#mealPanel button, #mealDialog button, #mealActionsDialog button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+#mealPanel button:focus-visible, #mealDialog button:focus-visible, #mealActionsDialog button:focus-visible { outline: 3px solid var(--theme-secondary); outline-offset: 3px; }
+#mealPanel button:disabled { cursor: default; opacity: .28; }
+.diary-quick-actions { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; margin: 12px 0 22px; }
+.diary-quick-actions button { display: flex; align-items: center; justify-content: center; gap: 11px; min-height: 64px; padding: 13px 10px; border: 1px solid var(--diary-line); border-radius: 18px; background: var(--theme-surface); text-align: left; }
+#mealPanel .diary-camera-action { border-color: transparent; background: var(--diary-accent); color: var(--theme-on-accent); }
+#mealPanel .diary-text-action { color: var(--diary-text); }
+#mealPanel .diary-quick-actions svg { width: 24px; height: 24px; }
+.diary-quick-actions button > span:last-child { display: flex; flex-direction: column; gap: 4px; }
+.diary-quick-actions strong { font-size: 14px; font-weight: 650; }
+.diary-quick-actions small { font-size: 10px; font-weight: 400; opacity: .72; }
+.diary-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.diary-section-heading h2 { margin: 0; font-size: 18px; font-weight: 750; letter-spacing: -.03em; }
+.diary-section-heading > span { color: var(--diary-muted); font-size: 11px; }
+.diary-entry { padding: 14px 0 16px; border-top: 1px solid var(--diary-line); }
+.diary-entry-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.diary-entry-copy { flex: 1; min-width: 0; }
+.diary-entry h4 { margin: 0 0 7px; color: var(--diary-text); font-size: 14px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.diary-entry-meta { display: flex; align-items: center; gap: 4px; color: var(--diary-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+#mealPanel .diary-entry-meta svg { width: 12px; height: 12px; }
+.diary-entry-more { display: grid; place-items: center; align-self: flex-start; width: 38px; height: 38px; margin: -5px -7px 0 0; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--diary-muted); }
+.diary-text-icon { display: grid; place-items: center; flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; background: var(--theme-subtle); color: var(--diary-muted); }
+.diary-entry.text-only .diary-entry-top { margin-bottom: 0; }
+.diary-entry-note { margin: 10px 0 0; color: var(--diary-muted); font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diary-photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; overflow: hidden; border-radius: 14px; }
+.diary-photo-grid button { display: block; min-width: 0; padding: 0; border: 0; background: var(--theme-subtle); }
+.diary-photo-grid img { display: block; width: 100%; height: 158px; object-fit: cover; }
+.diary-photo-grid.photos-1 { grid-template-columns: 1fr; }
+.diary-photo-grid.photos-1 img { height: 202px; }
+.diary-photo-grid.photos-3 { grid-template-columns: 1.5fr 1fr; grid-template-rows: 98px 98px; }
+.diary-photo-grid.photos-3 button:first-child { grid-row: span 2; }
+.diary-photo-grid.photos-3 img { height: 100%; }
+.diary-day-status { padding: 22px; border-radius: 16px; background: var(--theme-surface); color: var(--diary-muted); text-align: center; font-size: 12px; }
+.diary-footer-note { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 22px 0 4px; color: var(--diary-muted); font-size: 10px; }
+#mealPanel .diary-footer-note svg { width: 13px; height: 13px; }
+
+/* The header and Save action remain visible while the editor body scrolls. */
+html.meal-editor-active { overflow: hidden; }
+#mealDialog { position: fixed; top: calc(var(--meal-viewport-top, 0px) + max(10px, env(safe-area-inset-top))); bottom: auto; margin: 0 auto; width: min(480px, calc(100vw - 24px)); max-height: calc(var(--meal-viewport-height, 100dvh) - max(10px, env(safe-area-inset-top)) - 10px); padding: 0; overflow: hidden; border: 1px solid var(--theme-line); border-radius: 26px; background: var(--theme-surface); }
+#mealDialog form { display: flex; flex-direction: column; gap: 0; max-height: calc(var(--meal-viewport-height, 100dvh) - max(10px, env(safe-area-inset-top)) - 12px); margin: 0; padding: 0; border-radius: 0; }
+.diary-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; padding: 21px 22px 17px; border-bottom: 1px solid var(--theme-line); }
+#mealDialog h2 { margin: 6px 0 0; color: var(--theme-text); font-size: 23px; font-weight: 750; letter-spacing: -.04em; }
+.diary-editor-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 18px; min-height: 0; padding: 20px 22px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scroll-padding-block: 12px; }
+.diary-editor-body > * { flex: 0 0 auto; }
+#mealDialog.diary-keyboard-open .diary-editor-header { padding-block: 12px; }
+#mealDialog.diary-keyboard-open .diary-editor-footer { padding-block: 8px; }
+#mealDialog.diary-keyboard-open .diary-editor-footer p { display: none; }
+#mealDialog fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+#mealDialog legend, #mealDialog label, .diary-field-heading strong { margin: 0 0 10px; padding: 0; color: var(--theme-text); font-size: 13px; font-weight: 650; }
+.diary-field-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.diary-field-heading strong { margin: 0; }
+.diary-field-heading > span { color: var(--theme-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.diary-photo-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.diary-photo-preview[hidden] { display: none; }
+.diary-photo-preview figure { position: relative; min-width: 0; margin: 0; }
+.diary-photo-preview img { display: block; width: 100%; height: 100px; border-radius: 12px; object-fit: cover; }
+.diary-photo-preview button { position: absolute; top: 3px; right: 3px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.62); color: #fff; font-size: 20px; }
+.diary-photo-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; }
+.diary-photo-actions button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 57px; padding: 10px 6px; border: 1px dashed var(--theme-line); border-radius: 13px; background: var(--theme-subtle); color: var(--theme-accent); font-size: 12px; font-weight: 600; }
+#mealDialog .diary-photo-actions svg { width: 20px; height: 20px; }
+#mealDialog .diary-field-hint { margin: 8px 0 0; color: var(--theme-muted); font-size: 10px; line-height: 1.7; }
+#mealTimeHint { margin-top: -12px !important; }
+#mealDialog .diary-description-field label { display: flex; justify-content: space-between; align-items: center; }
+#mealDialog label > span:last-child:not(:first-child) { color: var(--theme-muted); font-size: 10px; font-weight: 400; }
+#mealDialog .text-field { display: block; width: 100%; min-width: 0; min-height: 76px; margin: 0; padding: 12px 14px; border: 1px solid var(--theme-line); border-radius: 13px; background: var(--theme-subtle); color: var(--theme-text); font-family: inherit; font-size: 16px; line-height: 1.65; resize: none; }
+#mealDialog .text-field::placeholder { color: var(--theme-muted); opacity: .8; font-size: 13px; }
+.diary-time-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 14px; border: 1px solid var(--theme-line); border-radius: 14px; }
+#mealDialog .diary-time-field label { display: flex; align-items: center; gap: 9px; margin: 0; white-space: nowrap; }
+#mealDialog .diary-time-field label > span:last-child { color: var(--theme-text); font-size: 12px; font-weight: 650; }
+.diary-time-field small { display: block; margin-top: 5px; color: var(--theme-muted); font-size: 9px; font-weight: 400; }
+#mealDialog .diary-time-field svg { width: 19px; height: 19px; color: var(--theme-muted); }
+#mealDialog #mealTimeInput { width: 116px; min-width: 0; min-height: 42px; margin: 0; padding: 7px 5px; border: 0; border-radius: 10px; background: var(--theme-subtle); color: var(--theme-text); font-family: inherit; font-size: 16px; text-align: center; }
+.diary-editor-footer { flex-shrink: 0; padding: 12px 22px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--theme-line); background: var(--theme-surface); }
+.diary-editor-footer p { margin: 0 0 9px; color: var(--theme-muted); text-align: center; font-size: 10px; }
+#mealSaveButton { width: 100%; min-height: 48px; margin: 0; border: 0; border-radius: 14px; background: var(--theme-accent); color: var(--theme-on-accent); font-size: 15px; font-weight: 650; }
+#mealDialog button:disabled { opacity: .45; }
+#mealActionsDialog { width: min(440px, calc(100vw - 24px)); padding: 20px; border: 1px solid var(--theme-line); border-radius: 25px; background: var(--theme-surface); }
+.diary-actions-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+.diary-actions-heading > div { min-width: 0; }
+.diary-actions-heading h2 { margin: 0; color: var(--theme-text); font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
+.diary-actions-heading p { margin: 5px 0 0; color: var(--theme-muted); font-size: 12px; }
+#mealActionsDialog > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 55px; margin: 0; padding: 12px 4px; border: 0; border-top: 1px solid var(--theme-line); background: transparent; color: var(--theme-text); font-size: 14px; text-align: left; }
+#mealActionsDialog > button > span:last-child:not(:first-child) { margin-left: auto; color: var(--theme-muted); font-size: 10px; }
+#mealActionsDialog .diary-delete-action, #mealActionsDialog .diary-delete-action #mealDeleteLabel { color: #cc3b4c; }
+#mealActionsDialog .diary-delete-action #mealDeleteLabel { margin-left: 0; font-size: 14px; }
+#mealActionsDialog .diary-delete-action[data-confirm="true"] { justify-content: center; margin-top: 8px; padding: 14px; border: 0; border-radius: 13px; background: #fcebed; }
+#mealPhotoViewer { padding: 46px 10px 10px; border-radius: 20px; }
+@media (max-width: 360px) {
+  .diary-quick-actions { gap: 8px; }
+  .diary-quick-actions button { gap: 8px; }
+  .diary-quick-actions strong { font-size: 13px; }
+  .diary-photo-grid.photos-1 img { height: 176px; }
+  .diary-photo-grid img { height: 130px; }
+  .diary-editor-header { padding: 17px 16px 14px; }
+  .diary-editor-body { padding: 17px 16px; }
+  .diary-editor-footer { padding-right: 16px; padding-left: 16px; }
+  #mealDialog #mealTimeInput { width: 104px; }
+  .diary-photo-actions button { gap: 5px; }
+  #mealActionsDialog > button > span:last-child:not(:first-child) { font-size: 9px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #mealPanel button { transition: background-color .15s, color .15s, opacity .15s; }
+}
+
+#mealDialog .diary-description-field label span { color: var(--theme-muted); font-size: 10px; font-weight: 400; }
+
+
+.diary-today-list { display: flex; flex-direction: column; gap: 16px; }
+.diary-today-list .diary-entry { padding: 16px; border: 1px solid var(--theme-line); border-radius: 21px; background: var(--theme-surface); }
+.diary-empty-state { padding: 38px 20px; border: 1px solid var(--theme-line); border-radius: 23px; background: var(--theme-surface); text-align: center; }
+.diary-empty-icon { display: grid; place-items: center; width: 62px; height: 62px; margin: 0 auto 18px; border-radius: 22px; background: var(--theme-soft); color: var(--theme-accent); }
+#mealPanel .diary-empty-icon svg { width: 30px; height: 30px; }
+.diary-empty-state h3 { margin: 0 0 9px; color: var(--theme-text); font-size: 19px; }
+.diary-empty-state p { margin: 0; color: var(--theme-muted); font-size: 12px; line-height: 1.8; }
+#mealQuickAdd { display: flex; align-items: center; justify-content: center; gap: 5px; width: auto; min-height: 44px; margin: 22px auto 0; padding: 10px 18px; border: 0; border-radius: 13px; background: var(--theme-soft); color: var(--theme-accent); font-size: 13px; }
+.diary-analyze-button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; padding: 10px; border: 1px solid var(--theme-line); border-radius: 13px; background: var(--theme-soft); color: var(--theme-accent); font-size: 13px; font-weight: 650; }
+.diary-nutrition-inputs { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin: 14px 0 0; }
+#mealDialog .diary-nutrition-inputs label { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 10px 11px; border-radius: 12px; background: var(--theme-subtle); color: var(--theme-muted); font-size: 11px; font-weight: 500; }
+#mealDialog .diary-nutrition-inputs label > span { display: flex; align-items: baseline; color: var(--theme-text); }
+.diary-nutrition-inputs input { width: 100%; min-width: 0; min-height: 34px; margin: 0; padding: 3px 0; border: 0; background: transparent; color: var(--theme-text); font-size: 19px; font-weight: 650; }
+.diary-nutrition-inputs small { color: var(--theme-muted); font-size: 11px; }
+.diary-nutrition-result-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; color: var(--theme-muted); font-size: 10px; }
+#mealNutritionClear { min-height: 36px; padding: 5px 0 5px 8px; border: 0; background: transparent; color: var(--theme-accent); font-size: 10px; }
+.diary-ai-privacy { margin: 8px 0 0; color: var(--theme-muted); font-size: 9px; line-height: 1.6; }
+.diary-ai-connect { min-height: 40px; margin-top: 8px; padding: 8px 12px; border: 0; border-radius: 11px; background: var(--theme-accent); color: var(--theme-on-accent); font-size: 12px; }
+.diary-entry-nutrition { margin-top: 13px; padding: 13px; border-radius: 13px; background: var(--theme-subtle); }
+.diary-entry-nutrition > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.diary-entry-nutrition strong { color: var(--theme-text); font-size: 20px; }
+.diary-entry-nutrition strong small { color: var(--theme-muted); font-size: 11px; font-weight: 400; }
+.diary-entry-nutrition > div > span { color: var(--theme-muted); font-size: 9px; }
+.diary-entry-nutrition dl { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--theme-line); }
+.diary-entry-nutrition dt { margin-bottom: 4px; color: var(--theme-muted); font-size: 10px; }
+.diary-entry-nutrition dd { margin: 0; color: var(--theme-text); font-size: 13px; font-weight: 650; }
+.diary-entry-nutrition dd small { font-size: 10px; font-weight: 400; }
+.meal-home-note { color: var(--theme-muted); font-size: 10px; line-height: 1.6; }
+
+.diary-eyebrow { display: block; color: var(--theme-muted); font-size: 10px; font-weight: 500; letter-spacing: .02em; }
+.diary-nutrition-inputs input { appearance: textfield; }
+.diary-nutrition-inputs input::-webkit-inner-spin-button, .diary-nutrition-inputs input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.diary-daily-nutrition { margin: 0 0 24px; padding: 18px; border: 1px solid var(--theme-line); border-radius: 22px; background: var(--theme-surface); }
+.diary-daily-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.diary-daily-heading h2 { margin: 0; color: var(--theme-text); font-size: 15px; font-weight: 650; }
+.diary-daily-heading > span { color: var(--theme-muted); font-size: 10px; white-space: nowrap; }
+.diary-daily-energy { display: flex; align-items: baseline; gap: 7px; margin: 15px 0 17px; }
+.diary-daily-energy > strong { color: var(--theme-accent); font-size: 34px; line-height: 1.1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.diary-daily-energy > span { color: var(--theme-muted); font-size: 12px; }
+.diary-daily-energy > small { margin-left: auto; color: var(--theme-muted); font-size: 10px; }
+.diary-daily-macros { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); margin: 0; padding: 13px; gap: 9px; border-radius: 13px; background: var(--theme-subtle); }
+.diary-daily-macros dt { margin-bottom: 7px; color: var(--theme-muted); font-size: 11px; }
+.diary-daily-macros dd { margin: 0; color: var(--theme-text); font-size: 16px; font-variant-numeric: tabular-nums; }
+.diary-daily-macros dd span { color: var(--theme-muted); font-size: 10px; }
+#mealDailyNote { margin: 12px 0 0; color: var(--theme-muted); font-size: 10px; line-height: 1.7; }
+@media (max-width: 360px) { .diary-daily-nutrition { padding: 15px; } .diary-daily-macros { padding: 11px; gap: 5px; } }
+
+.diary-goal-link { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin: 0 0 12px; padding: 0; min-height: 32px; border: 0; background: transparent; color: var(--theme-muted); text-align: left; font-size: 11px; }
+.diary-goal-link > span:last-child { flex-shrink: 0; color: var(--theme-accent); }
+.diary-daily-macros .diary-macro-target { margin-top: 7px; color: var(--theme-muted); font-size: 10px; line-height: 1.5; }
+.diary-daily-macros .diary-macro-progress { height: 4px; margin-top: 10px; overflow: hidden; border-radius: 4px; background: var(--theme-line); }
+.diary-macro-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--theme-accent); }
+.diary-daily-macros .diary-macro-remaining { margin-top: 7px; color: var(--theme-muted); font-size: 10px; line-height: 1.5; }
+.nutrition-goal-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.nutrition-goal-heading > div { min-width: 0; }
+.nutrition-goal-heading h2 { margin: 0; color: var(--theme-text); font-size: 17px; font-weight: 650; }
+.nutrition-goal-heading p { margin: 7px 0 0; color: var(--theme-muted); font-size: 11px; line-height: 1.6; }
+.nutrition-goal-values { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 18px 0 0; padding: 14px; border-radius: 13px; background: var(--theme-subtle); }
+.nutrition-goal-values dt { margin-bottom: 8px; color: var(--theme-muted); font-size: 11px; }
+.nutrition-goal-values dd { margin: 0; color: var(--theme-text); font-size: 19px; font-variant-numeric: tabular-nums; }
+.nutrition-goal-values dd small { color: var(--theme-muted); font-size: 11px; }
+#nutritionGoalDialog { width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px); padding: 0; overflow: hidden; border: 1px solid var(--theme-line); border-radius: 24px; background: var(--theme-surface); }
+#nutritionGoalForm { display: flex; flex-direction: column; gap: 0; max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 26px); padding: 0; }
+#nutritionGoalForm header { flex-shrink: 0; padding: 20px; border-bottom: 1px solid var(--theme-line); }
+#nutritionGoalForm h2 { margin: 5px 0 0; font-size: 22px; }
+#nutritionGoalForm .nutrition-goal-eyebrow { margin: 0; font-size: 10px; }
+.nutrition-goal-body { min-height: 0; padding: 18px 20px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+#nutritionGoalForm label { display: block; margin: 0 0 9px; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+#nutritionGoalForm label > span { color: var(--theme-muted); font-size: 11px; }
+#nutritionGoalWeight { width: 100%; min-height: 48px; margin: 0; padding: 11px 14px; border: 1px solid var(--theme-line); border-radius: 12px; background: var(--theme-subtle); color: var(--theme-text); font-size: 18px; }
+.nutrition-use-weight { min-height: 36px; margin: 7px 0 0; padding: 5px 0; border: 0; background: transparent; color: var(--theme-accent); font-size: 11px; }
+.nutrition-goal-help { margin: 13px 0; color: var(--theme-muted); font-size: 11px; line-height: 1.8; }
+.nutrition-ratio-inputs { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-top: 16px; }
+#nutritionGoalForm .nutrition-ratio-inputs label { margin: 0; padding: 10px; border-radius: 12px; background: var(--theme-subtle); font-size: 11px; }
+.nutrition-ratio-inputs label > span { display: flex; align-items: baseline; gap: 2px; margin-top: 8px; }
+.nutrition-ratio-inputs input { width: 100%; min-width: 0; min-height: 36px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--theme-text); font-size: 19px; font-weight: 650; }
+.nutrition-ratio-inputs small { flex-shrink: 0; color: var(--theme-muted); font-size: 9px; font-weight: 400; }
+.nutrition-goal-preview { margin-top: 20px; }
+.nutrition-goal-preview h3 { margin: 0; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+.nutrition-goal-preview .nutrition-goal-values { margin-top: 10px; }
+.nutrition-goal-message { margin: 0; color: var(--theme-accent); font-size: 11px; line-height: 1.7; }
+#nutritionGoalForm footer { flex-shrink: 0; padding: 12px 20px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--theme-line); }
+#nutritionGoalSave { width: 100%; min-height: 48px; margin: 0; border: 0; border-radius: 13px; background: var(--theme-accent); color: var(--theme-on-accent); font-size: 14px; }
+@media (max-width: 360px) {
+  .nutrition-goal-body { padding-inline: 16px; }
+  .nutrition-ratio-inputs label > span { flex-wrap: wrap; }
+  .nutrition-goal-values { gap: 6px; padding: 12px; }
+}
+
+.account-nutrition-targets { display: flex; flex-wrap: wrap; gap: 3px 10px; }
+.account-nutrition-targets b { font-weight: 500; }
+.food-settings-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px); margin-block: auto; padding: 0; overflow: hidden; border: 1px solid var(--theme-line); border-radius: 24px; background: var(--theme-surface); }
+#foodCatalogDialog[open] { display: flex; flex-direction: column; }
+#foodCatalogForm { display: flex; flex-direction: column; gap: 0; max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 26px); margin: 0; padding: 0; }
+.food-dialog-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 10px; padding: 20px; border-bottom: 1px solid var(--theme-line); }
+.food-dialog-heading > div { flex: 1; }
+.food-dialog-heading h2 { margin: 0; color: var(--theme-text); font-size: 20px; font-weight: 650; }
+.food-dialog-heading p { margin: 6px 0 0; color: var(--theme-muted); font-size: 11px; }
+#foodCatalogAdd { min-height: 40px; padding: 7px 11px; border: 0; border-radius: 11px; background: var(--theme-soft); color: var(--theme-accent); font-size: 12px; -webkit-tap-highlight-color: transparent; }
+#foodCatalogAdd:focus { outline: none; box-shadow: none; }
+html[data-focus-input="keyboard"] #foodCatalogAdd:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
+.food-dialog-body { min-height: 0; padding: 18px 20px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.food-library-help { margin: 0 0 15px; color: var(--theme-muted); font-size: 11px; line-height: 1.8; }
+.food-settings-dialog .text-field { width: 100%; min-height: 46px; margin: 0 0 16px; padding: 11px 12px; border: 1px solid var(--theme-line); border-radius: 12px; background: var(--theme-subtle); color: var(--theme-text); font-size: 16px; }
+.food-settings-dialog .text-field::placeholder { font-size: 12px; color: var(--theme-muted); }
+.food-catalog-list { display: flex; flex-direction: column; gap: 10px; }
+.food-catalog-item { display: flex; flex-direction: column; gap: 9px; width: 100%; padding: 15px; border: 1px solid var(--theme-line); border-radius: 15px; background: var(--theme-surface); color: var(--theme-text); text-align: left; }
+.food-item-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
+.food-item-heading strong { min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; font-weight: 650; }
+.food-item-heading > span { flex-shrink: 0; color: var(--theme-accent); font-size: 11px; }
+.food-item-serving { color: var(--theme-muted); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.food-item-macros { display: flex; flex-wrap: wrap; gap: 6px 11px; font-size: 10px; line-height: 1.6; color: var(--theme-muted); }
+.food-item-macros b { color: var(--theme-text); font-weight: 600; }
+.food-catalog-empty { padding: 30px 0; color: var(--theme-text); text-align: center; }
+.food-catalog-empty strong { font-size: 16px; }
+.food-catalog-empty p { margin: 12px 0 0; color: var(--theme-muted); font-size: 12px; line-height: 1.9; }
+#foodCatalogForm label, .food-serving-fields legend { display: block; margin: 0 0 9px; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+#foodCatalogForm label > small { color: var(--theme-muted); font-size: 10px; font-weight: 400; }
+.food-serving-fields { min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
+.food-serving-fields > div { display: grid; grid-template-columns: minmax(0,1fr) 90px; gap: 8px; }
+.food-serving-fields input, .food-serving-fields select { width: 100%; min-width: 0; min-height: 44px; margin: 0; padding: 9px 12px; border: 1px solid var(--theme-line); border-radius: 12px; background: var(--theme-subtle); color: var(--theme-text); font-size: 16px; }
+.food-serving-fields p { margin: 8px 0 0; color: var(--theme-muted); font-size: 10px; line-height: 1.8; }
+.food-nutrient-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 0 0 16px; }
+#foodCatalogForm .food-nutrient-fields label { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--theme-subtle); color: var(--theme-muted); font-size: 11px; }
+.food-nutrient-fields label > span { display: flex; align-items: baseline; gap: 5px; margin-top: 8px; }
+.food-nutrient-fields input { width: 100%; min-width: 0; min-height: 36px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--theme-text); font-size: 18px; font-weight: 600; }
+.food-nutrient-fields input::placeholder { color: var(--theme-muted); font-size: 11px; font-weight: 400; }
+.food-nutrient-fields small { color: var(--theme-muted); font-size: 11px; font-weight: 400; }
+#foodCatalogForm footer { flex-shrink: 0; padding: 12px 20px max(14px,env(safe-area-inset-bottom)); border-top: 1px solid var(--theme-line); }
+#foodCatalogSave { width: 100%; min-height: 48px; margin: 0; border: 0; border-radius: 13px; background: var(--theme-accent); color: var(--theme-on-accent); font-size: 14px; }
+.food-form-message { margin: 0; color: var(--theme-accent); font-size: 11px; line-height: 1.7; }
+.food-delete-button { display: block; min-height: 40px; margin: 10px auto 0; padding: 8px; border: 0; background: transparent; color: #c63a50; font-size: 12px; }
+.food-settings-dialog button:disabled { opacity: .45; }

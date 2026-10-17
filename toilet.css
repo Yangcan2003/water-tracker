@@ -1,0 +1,108 @@
+/* Restroom: counts and quick actions, followed by the day's records. */
+.toilet-page .toilet-section {
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.toilet-page .toilet-buttons {
+  gap: 12px;
+  margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.toilet-page .toilet-btn {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 18px;
+  border: 1px solid var(--theme-line);
+  border-radius: 24px;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  box-shadow: none;
+  text-align: left;
+}
+.toilet-page .toilet-btn:hover {
+  transform: none;
+  border-color: var(--theme-accent);
+  background: var(--theme-surface);
+  box-shadow: none;
+}
+.toilet-page .toilet-btn:active { transform: scale(.98); }
+.toilet-page .toilet-btn:focus-visible { outline: 3px solid var(--theme-accent); outline-offset: 3px; }
+.toilet-card-heading { display: flex; align-items: center; gap: 10px; }
+.toilet-page .toilet-card-heading > strong { color: var(--theme-text); font-size: 15px; font-weight: 600; }
+.toilet-page .toilet-emoji { flex-shrink: 0; }
+.toilet-page .toilet-emoji svg { width: 32px; height: 32px; }
+.toilet-page .toilet-btn:hover .toilet-emoji { transform: none; }
+.toilet-card-count { display: flex; align-items: baseline; gap: 6px; margin: 16px 0; }
+.toilet-page .toilet-card-count > strong {
+  color: var(--theme-text);
+  font-size: 42px;
+  font-weight: 650;
+  letter-spacing: -.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.toilet-card-count > span { color: var(--theme-muted); font-size: 13px; }
+.toilet-card-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--theme-line);
+  color: var(--theme-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.toilet-page .toilet-add {
+  position: static;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  background: var(--theme-soft);
+  color: var(--theme-accent);
+  font-size: 22px;
+  font-weight: 400;
+}
+.toilet-records {
+  padding: 20px 18px 6px;
+  border: 1px solid var(--theme-line);
+  border-radius: 24px;
+  background: var(--theme-surface);
+}
+.toilet-records-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.toilet-records-heading h2 { margin: 0; color: var(--theme-text); font-size: 16px; font-weight: 600; }
+.toilet-records-heading > span { color: var(--theme-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.toilet-page .history-list { gap: 0; margin-top: 14px; }
+.toilet-page .toilet-history-item {
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  gap: 12px;
+  padding: 14px 0;
+  border: 0;
+  border-top: 1px solid var(--theme-line);
+  border-radius: 0;
+  background: transparent;
+}
+.toilet-page .toilet-history-item:first-child { border-top: 0; }
+.toilet-page .toilet-dot { width: 36px; height: 40px; border-radius: 12px; background: var(--theme-subtle); }
+.toilet-page .toilet-dot svg { width: 24px !important; height: 24px !important; }
+.toilet-page .history-info strong { color: var(--theme-text); font-size: 14px; font-weight: 500; }
+.toilet-page .time-editable { width: fit-content; padding: 0; margin-top: 4px; color: var(--theme-muted); border-bottom-color: var(--theme-line); font-size: 12px; }
+.toilet-page .delete-record { width: 36px; height: 44px; color: var(--theme-muted); }
+.toilet-page .empty-state { padding: 32px 8px 38px; border: 0; background: transparent; color: var(--theme-muted); }
+.toilet-page .empty-state strong { color: var(--theme-text); font-size: 14px; font-weight: 500; }
+.toilet-page .empty-state p { margin: 8px 0 0; font-size: 12px; }
+html[data-theme="midnight"] .toilet-page .toilet-emoji svg,
+html[data-theme="midnight"] .toilet-page .toilet-dot svg { filter: invert(1); }
+@media (max-width: 360px) {
+  .toilet-page .toilet-btn { padding: 15px; border-radius: 20px; }
+  .toilet-card-heading { gap: 7px; }
+  .toilet-page .toilet-emoji svg { width: 28px; height: 28px; }
+  .toilet-page .toilet-card-count > strong { font-size: 38px; }
+  .toilet-records { padding-right: 15px; padding-left: 15px; border-radius: 20px; }
+}

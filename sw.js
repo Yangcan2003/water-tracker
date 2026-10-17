@@ -1,16 +1,54 @@
 // Service Worker for 每日健康追踪 — offline support
-const CACHE_NAME = "health-tracker-v3";
+const CACHE_NAME = "health-tracker-v64";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./toilet.css?v=1",
+  "./meals.css?v=6",
+  "./revamp.css",
+  "./workout.css?v=1",
+  "./meta.css",
+  "./history.css?v=1",
   "./app.js",
-  "./js/config.js",
-  "./js/utils.js",
-  "./js/storage.js",
+  "./assistant.css?v=9",
+  "./intake.css?v=4",
+  "./themes.css?v=1",
+  "./icons/themes/coral/icon-192.svg",
+  "./icons/themes/coral/icon-192.png",
+  "./icons/themes/coral/icon-512.png",
+  "./icons/themes/coral/apple-touch-icon.png",
+  "./icons/themes/cherry/icon-192.svg",
+  "./icons/themes/cherry/icon-192.png",
+  "./icons/themes/cherry/icon-512.png",
+  "./icons/themes/cherry/apple-touch-icon.png",
+  "./icons/themes/iris/icon-192.svg",
+  "./icons/themes/iris/icon-192.png",
+  "./icons/themes/iris/icon-512.png",
+  "./icons/themes/iris/apple-touch-icon.png",
+  "./icons/themes/jade/icon-192.svg",
+  "./icons/themes/jade/icon-192.png",
+  "./icons/themes/jade/icon-512.png",
+  "./icons/themes/jade/apple-touch-icon.png",
+  "./icons/themes/lilac/icon-192.svg",
+  "./icons/themes/lilac/icon-192.png",
+  "./icons/themes/lilac/icon-512.png",
+  "./icons/themes/lilac/apple-touch-icon.png",
+  "./icons/themes/midnight/icon-192.svg",
+  "./icons/themes/midnight/icon-192.png",
+  "./icons/themes/midnight/icon-512.png",
+  "./icons/themes/midnight/apple-touch-icon.png",
+  "./icons/themes/graphite/icon-192.svg",
+  "./icons/themes/graphite/icon-192.png",
+  "./icons/themes/graphite/icon-512.png",
+  "./icons/themes/graphite/apple-touch-icon.png",
   "./manifest.json",
   "./icons/icon-192.svg",
   "./icons/icon-512.svg",
+  "./icons/icon-192.svg?v=4",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/apple-touch-icon.png?v=4",
 ];
 
 // Install: precache app shell
@@ -42,6 +80,8 @@ self.addEventListener("fetch", (event) => {
 
   // Skip non-GET requests and Firebase/CDN requests
   if (event.request.method !== "GET") return;
+  // AI connection metadata and replies must never be served from the offline cache.
+  if (url.pathname === "/api/ai") return;
   if (url.hostname.includes("googleapis.com") || url.hostname.includes("gstatic.com") || url.hostname.includes("firebase")) {
     // Firebase/CDN: network-first (they have their own caching)
     return;
