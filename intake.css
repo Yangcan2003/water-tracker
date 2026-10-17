@@ -1,0 +1,64 @@
+/* Medication and nutrition share one interaction model and the app's palette. */
+.intake-page { color: var(--theme-text); padding: 0 0 12px; }
+.intake-page *, .intake-page *::before, .intake-page *::after { box-sizing: border-box; }
+.intake-page svg { width: 20px; height: 20px; display: block; flex-shrink: 0; }
+.intake-page button { font: inherit; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+.intake-page [hidden] { display: none !important; }
+.intake-page button:focus-visible { outline: 3px solid var(--theme-secondary); outline-offset: 3px; }
+.intake-page button:disabled { cursor: default; }
+.intake-tabs { display: flex; gap: 4px; padding: 4px; margin: 0 0 20px; border: 1px solid var(--theme-line); border-radius: 16px; background: var(--theme-subtle); }
+.intake-tabs button { flex: 1; min-height: 42px; border: 0; border-radius: 12px; background: transparent; color: var(--theme-muted); font-size: 14px; font-weight: 600; }
+.intake-tabs button[aria-pressed="true"] { background: var(--theme-surface); color: var(--theme-text); box-shadow: 0 2px 6px #00000008; }
+.intake-hero { margin: 0 0 24px; padding: 14px 2px; }
+.intake-progress { --intake-progress: 0%; display: flex; align-items: center; gap: 16px; }
+.intake-progress-track { flex: 1; height: 8px; overflow: hidden; border-radius: 20px; background: var(--theme-soft); }
+.intake-progress-track i { display: block; width: var(--intake-progress); height: 100%; border-radius: inherit; background: var(--theme-accent); }
+.intake-progress strong { min-width: 65px; color: var(--theme-text); font-size: 28px; line-height: 1.2; font-weight: 700; text-align: right; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.intake-training { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -12px 0 25px; }
+.intake-page .workout-toggle { display: flex; align-items: center; gap: 7px; min-height: 44px; width: auto; padding: 7px 10px; border: 1px solid var(--theme-line); border-radius: 12px; background: var(--theme-surface); color: var(--theme-muted); font-size: 11px; box-shadow: none; }
+.intake-page .workout-toggle.active { border-color: var(--theme-accent); color: var(--theme-accent); background: var(--theme-soft); }
+.intake-page .workout-indicator { width: 16px; height: 16px; margin-left: 0; border: 1px solid currentColor; border-radius: 5px; background: transparent; font-size: 11px; line-height: 14px; }
+.intake-training > span { color: var(--theme-muted); font-size: 10px; }
+.intake-list { display: flex; flex-direction: column; gap: 12px; }
+.intake-item { overflow: hidden; padding: 17px 17px 14px; border: 1px solid var(--theme-line); border-radius: 21px; background: var(--theme-surface); }
+.intake-item-top { display: flex; align-items: center; gap: 12px; }
+.intake-symbol { display: grid; place-items: center; width: 43px; height: 43px; flex-shrink: 0; border-radius: 14px; color: var(--theme-accent); background: var(--theme-soft); }
+.intake-symbol svg { width: 23px; height: 23px; }
+.intake-item-copy { flex: 1; min-width: 0; }
+.intake-item-copy h3 { margin: 0 0 5px; font-size: 17px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.intake-item-copy p { margin: 0; color: var(--theme-muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.intake-item-copy p > span { margin: 0 6px; }
+.intake-page .intake-edit { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; margin: -4px -8px -4px 0; border: 0; background: transparent; color: var(--theme-muted); }
+.intake-edit svg { width: 17px; height: 17px; }
+.intake-item-meta { display: flex; align-items: center; gap: 10px; margin: 12px 0; color: var(--theme-muted); font-size: 11px; line-height: 1.5; }
+.intake-item-bottom { display: flex; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid var(--theme-line); }
+.intake-dose-progress { flex: 1; min-width: 44px; }
+.intake-dose-progress > span { display: block; margin-bottom: 7px; font-size: 11px; color: var(--theme-muted); font-variant-numeric: tabular-nums; }
+.intake-dose-progress b { color: var(--theme-text); font-size: 14px; font-weight: 650; }
+.intake-mini-track { width: 100%; max-width: 110px; height: 4px; overflow: hidden; border-radius: 8px; background: var(--theme-subtle); }
+.intake-mini-track i { display: block; height: 100%; border-radius: inherit; background: var(--theme-accent); }
+.intake-item-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.intake-page .intake-minus { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--theme-line); border-radius: 13px; background: var(--theme-surface); color: var(--theme-muted); }
+.intake-page .intake-minus:disabled { opacity: .3; }
+.intake-page .intake-record { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 106px; height: 44px; padding: 0 12px; border: 0; border-radius: 13px; color: var(--theme-on-accent); background: var(--theme-accent); font-size: 12px; font-weight: 650; }
+.intake-record svg { width: 16px; height: 16px; }
+.intake-item-done .intake-record { color: var(--theme-accent); background: var(--theme-soft); }
+.intake-item[aria-busy="true"] button { opacity: .6; }
+.intake-item-off { background: transparent; }
+.intake-item-off .intake-symbol { color: var(--theme-muted); background: var(--theme-subtle); }
+.intake-item-off .intake-item-copy h3 { color: var(--theme-muted); }
+.intake-page .intake-off-note { margin: 0; padding-top: 10px; border-top: 1px solid var(--theme-line); font-size: 11px; line-height: 1.6; color: var(--theme-muted); }
+.intake-hint { margin: 13px 3px 8px; color: var(--theme-muted); font-size: 11px; line-height: 1.8; }
+.intake-empty { display: flex; flex-direction: column; align-items: center; padding: 29px 20px; border: 1px dashed var(--theme-line); border-radius: 21px; text-align: center; background: var(--theme-surface); color: var(--theme-muted); font-size: 12px; }
+.intake-empty-symbol { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 15px; border-radius: 16px; background: var(--theme-soft); color: var(--theme-accent); }
+.intake-empty strong { color: var(--theme-text); font-size: 15px; font-weight: 650; }
+.intake-empty p { max-width: 240px; margin: 8px 0 0; font-size: 12px; line-height: 1.7; }
+@media (max-width: 360px) {
+  .intake-item { padding: 14px; }
+  .intake-item-top { gap: 9px; }
+  .intake-symbol { width: 36px; height: 36px; border-radius: 12px; }
+  .intake-item-copy h3 { font-size: 16px; }
+  .intake-page .intake-record { min-width: 94px; padding: 0 9px; }
+  .intake-item-actions { gap: 6px; }
+  .intake-training { flex-wrap: wrap; }
+}

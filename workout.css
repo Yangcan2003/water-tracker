@@ -1,0 +1,49 @@
+/* Daily training: quiet surfaces, anatomical cues, one-tap marking. */
+.workout-page { padding: 8px 0 24px; }
+.workout-page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 4px 2px 24px; }
+.workout-page-date { margin: 0 0 9px; color: var(--theme-muted); font-size: 12px; line-height: 1.5; letter-spacing: .02em; }
+.workout-page-heading h2 { margin: 0; color: var(--theme-text); font-size: 24px; font-weight: 650; line-height: 1.25; letter-spacing: -.04em; }
+.workout-current-status { display: inline-flex; align-items: center; gap: 6px; padding-bottom: 4px; color: var(--theme-muted); font-size: 11px; white-space: nowrap; }
+.workout-current-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .5; }
+.workout-current-status[data-marked="true"] { color: var(--theme-accent); }
+.workout-current-status[data-marked="true"]::before { opacity: 1; }
+.workout-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.workout-choice {
+  display: flex; flex-direction: column; align-items: stretch;
+  min-width: 0; min-height: 192px; padding: 18px 20px 20px;
+  border: 1px solid var(--theme-line); border-radius: 25px;
+  background: var(--theme-surface); color: var(--theme-text);
+  box-shadow: 0 3px 12px rgba(20, 26, 40, .025);
+  text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.workout-choice-top { display: flex; justify-content: space-between; align-items: center; color: var(--theme-muted); font-size: 10px; font-weight: 600; line-height: 22px; letter-spacing: .08em; }
+.workout-choice-check { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--theme-line); border-radius: 50%; background: var(--theme-surface); }
+.workout-choice-check svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.workout-choice-illustration { display: grid; place-items: center; align-self: center; width: 78px; height: 78px; margin: 8px 0 13px; color: var(--theme-accent); }
+.workout-choice-illustration > svg { width: 72px; height: 72px; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.workout-body-outline { stroke: var(--theme-muted); opacity: .7; }
+.workout-body-target { fill: var(--theme-soft); stroke: currentColor; }
+.workout-body-detail { stroke: currentColor; opacity: .65; }
+.workout-rest-moon { fill: var(--theme-soft); stroke: currentColor; }
+.workout-choice strong { color: inherit; font-size: 22px; font-weight: 650; line-height: 1.3; letter-spacing: -.035em; }
+.workout-choice[aria-pressed="true"] { border-color: var(--theme-accent); background: var(--theme-soft); color: var(--theme-accent); box-shadow: inset 0 0 0 1px var(--theme-accent), 0 5px 16px rgba(20, 26, 40, .035); }
+.workout-choice[aria-pressed="true"] .workout-choice-top { color: var(--theme-accent); }
+.workout-choice[aria-pressed="true"] .workout-choice-check { border-color: var(--theme-accent); background: var(--theme-accent); color: var(--theme-on-accent); }
+.workout-choice[aria-pressed="true"] .workout-choice-check svg { opacity: 1; }
+.workout-choice:active { transform: scale(.98); }
+.workout-choice:focus-visible { outline: 3px solid var(--theme-accent); outline-offset: 4px; }
+.workout-page-hint { margin: 22px 0 0; color: var(--theme-muted); font-size: 11px; line-height: 1.6; text-align: center; }
+@media (max-width: 360px) {
+  .workout-page-heading { margin-bottom: 20px; }
+  .workout-page-heading h2 { font-size: 22px; }
+  .workout-choice-grid { gap: 12px; }
+  .workout-choice { min-height: 178px; padding: 15px 16px 17px; border-radius: 22px; }
+  .workout-choice-illustration { width: 68px; height: 68px; margin: 6px 0 12px; }
+  .workout-choice-illustration > svg { width: 64px; height: 64px; }
+  .workout-choice strong { font-size: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workout-choice { transition: none; }
+  .workout-choice:active { transform: none; }
+}

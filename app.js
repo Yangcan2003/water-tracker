@@ -1,34 +1,64 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+import { initializeApp } from "firebase/app";
 import {
   createUserWithEmailAndPassword, getAuth, onAuthStateChanged,
-  signInWithEmailAndPassword, signOut,
-} from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+  signInWithEmailAndPassword, signOut, sendEmailVerification,
+} from "firebase/auth";
 import {
-  getFirestore, serverTimestamp, setDoc, doc,
-} from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+  getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+  serverTimestamp, setDoc, doc,
+} from "firebase/firestore";
+import Chart from "chart.js/auto";
 import { getFirebaseConfig, AVATAR_COLORS, DEFAULT_MEDICINES, DEFAULT_SUPPLEMENTS, DEFAULT_CUPS, DEFAULT_REMINDER, DEFAULT_SETTINGS } from "./js/config.js";
 import { toDateKey, fromDateKey, isWeekday, esc, toFriendlyError, toTimeValue, toTimeDisplay, getProgressMessage, genAvatarSVG, TOILET_SVG, t, setLang, getLang, playWaterSound, vibrate, playCompleteSound } from "./js/utils.js";
 import { storage } from "./js/storage.js";
+import { loadDaySnapshot } from "./js/day-loader.js";
+import { createBodyMeasurementsPage } from "./js/body-measurements-page.js";
+import { createNutritionGoalsPage } from "./js/nutrition-goals-page.js";
+import { createFoodCatalogPage } from "./js/food-catalog-page.js";
+import { createAssistantPage } from "./js/assistant-page.js";
+import { createHistoryPage } from "./js/history-page.js";
+import { historyDetailHTML } from "./js/history-detail.js";
+import { prepareAvatar } from "./js/avatar.js";
+import { MealTimeDraft, MAX_MEAL_PHOTOS, prepareMealPhoto, isMealPhoto } from "./js/meals.js";
+import { mealIcon, mealEntryHTML, mealRecordDate } from "./js/meal-diary.js";
+import { NUTRITION_FIELDS, normalizeMealNutrition, dailyMealNutrition } from "./js/meal-nutrition.js";
+import { analyzeMeal } from "./js/meal-nutrition-client.js";
+import { createMealEditorKeyboard } from "./js/meal-editor-keyboard.js";
+import { chatGPTPlan } from "./js/chatgpt-plan-client.js";
+import { intakeSummary, intakeCard, intakeIcon } from "./js/intake-ui.js";
+import { enabledPlans, enabledSupplements, SCHEDULE_LABELS } from "./js/supplement-plan.js";
+import { initializeNativePlatform, isNativeApp, nativeHaptic, shareDataBackup, syncNativeReminders } from "./js/native.js";
+import { initializeAppearance, currentTheme } from "./js/appearance.js";
 
 // ========== 全局状态 ==========
 let auth = null, db = null, currentUser = null;
+let appliedUserId;
+let navigationRevision = 0;
+// 启动时从缓存读到的上次登录身份，仅用于首屏渲染；真实登录态返回后即失效
+let bootUser = null;
+const LAST_USER_KEY = "watertracker:lastUser";
 let selectedDate = toDateKey(new Date());
 let records = [], dailyGoal = 2000, authMode = "login";
-let lastDeleted = null, toastTimer = null, requestVersion = 0;
+let lastRecordAction = null, toastTimer = null, requestVersion = 0;
 
-let medicineRecords = [], supplementRecords = [], toiletRecords = [];
+let medicineRecords = [], supplementRecords = [], toiletRecords = [], mealRecords = [];
 let userMedicines = [], userSupplements = [];
-let currentEditItem = null;
+let currentEditItem = null, itemPlanReturn = null;
+const intakeBusy = new Set();
 let isWorkoutDay = false;
+let workoutDetail = {};
 let workoutDaysCache = {};
 let historyDayData = [];
 let historyViewMode = "overview";
-let historyOffset = 0;
-const HISTORY_PAGE_SIZE = 14;
+let syncRetryInProgress = false;
+let mealDraft = null, mealSelectionVersion = 0, mealSaving = false;
+let mealDayLoading = false, mealActionId = null, mealActionBusy = false;
+let recordTimeDraft = null;
 
 let avatarType = "default";
 let avatarColor = "#168d84";
 let avatarUrl = "";
+let avatarDraft = null, avatarSelectionVersion = 0, avatarSaving = false;
 // 新增状态
 let userCups = [...DEFAULT_CUPS];
 let reminderSettings = { ...DEFAULT_REMINDER };
@@ -45,41 +75,86 @@ function $(sel) { return document.querySelector(sel); }
   "authShell","appShell","authForm","loginTab","registerTab","authEyebrow","authTitle",
   "emailInput","passwordInput","authMessage","authSubmit",
   "currentAmount","goalAmount","progressPercent","progressBar","progressMessage",
-  "waterFill","waterWave","dateLabel","fullDate","datePicker","datePickerButton",
-  "previousDay","nextDay","historyList","recordCount",
+  "waterFill","waterWave","historyList","recordCount",
   "goalDialog","goalForm","goalInput",
+  "recordTimeDialog","recordTimeForm","recordTimeInput","recordTimeSaveButton",
   "customButton","customDialog","customForm","customName","customAmount",
   "toast","toastText","undoButton",
-  "waterTab","medicineTab","supplementTab",
-  "waterPanel","medicinePanel","supplementPanel",
+  "overviewTab","assistantTab","historyTab","accountTab",
+  "dashboardPanel","assistantPanel","timelinePanel","accountPanel","detailBackBar","detailBackButton",
+  "waterPanel","toiletPanel","mealPanel","workoutPanel","medicinePanel","supplementPanel",
   "historyDialog","historyContent",
-  "avatarButton","avatarImg","profileDialog","profileAvatar","profileEmail",
-  "editAvatarButton","profileGoalButton","profileGoalVal",
-  "profileHistoryButton","profileExportButton","profileLogoutButton",
-  "avatarDialog","avatarPreview","avatarColors","avatarUrlInput","avatarSaveButton",
-  "medicineGrid","medicineTakenCount","medicineTotalCount","medicinePercent",
-  "medicineRecordCount","medicineHistoryList","medicineHint",
-  "customMedicineButton","customMedicineDialog","customMedicineForm",
+  "profileDialog","profileEmail","profileLogoutButton",
+  "avatarDialog","avatarPreview","avatarColors","avatarSaveButton","avatarChooseButton","avatarFileInput","avatarResetButton","avatarMessage",
+  "medicinePlanDialog","medicinePlanList","medicinePlanSummary","medicinePlanAdd","accountMedicineButton","accountMedicineValue",
+  "supplementPlanDialog","supplementPlanList","supplementPlanSummary","supplementPlanAdd","accountSupplementButton","accountSupplementValue","accountStatsButton",
+  "medicineGrid","medicinePercent",
+  "medicineHint",
+  "customMedicineDialog","customMedicineForm",
   "customMedicineName","customMedicineDosage","customMedicineTarget","customMedicineSchedule",
   "medicineWorkoutToggle",
-  "supplementGrid","supplementTakenCount","supplementTotalCount","supplementPercent",
-  "supplementRecordCount","supplementHistoryList","supplementHint",
-  "customSupplementButton","customSupplementDialog","customSupplementForm",
+  "supplementGrid","supplementPercent",
+  "supplementHint",
+  "customSupplementDialog","customSupplementForm",
   "customSupplementName","customSupplementDosage","customSupplementTarget","customSupplementSchedule",
-  "supplementWorkoutToggle","deleteSupplementBtn","deleteMedicineBtn",
-  "toiletRecordCount","toiletHistoryList",
-  "syncButton","syncIcon","syncLabel","offlineBadge","authDialog","authDialogClose",
+  "deleteSupplementBtn","deleteMedicineBtn",
+  "toiletRecordCount","toiletHistoryList","toiletBigCount","toiletSmallCount",
+  "authDialog","authDialogClose","accountSyncDetail","accountSyncState","accountSyncRetry",
   // 新增 DOM
   "cupDialog","cupList","newCupName","newCupAmount","addCupBtn",
   "statsDialog","statsWeekTab","statsMonthTab","waterChart","complianceChart",
   "reminderDialog","reminderEnabled","reminderTimesList","addReminderTimeBtn","saveReminderBtn",
   "settingsDialog","soundEnabled","vibrationEnabled","languageSelect",
-  "profileStatsButton","profileReminderButton","profileReminderStatus","profileSettingsButton",
   "editCupsBtn","smartWeight","smartActivity","smartResult","smartApplyBtn",
   "fabMain","fabMenu",
+  "overviewMedicineCard","overviewSupplementCard","overviewToiletCard",
+  "overviewMedicineValue","overviewSupplementValue","overviewToiletValue",
+  "overviewMealCard","overviewMealValue","overviewWorkoutCard","overviewWorkoutValue",
+  "mealDayList",
+  "mealDialog","mealForm","mealNameInput",
+  "mealQuickAdd","mealDialogTitle","mealTimeInput","mealTimeHint","mealSaveButton",
+  "mealPhotoPreview","mealPhotoCount","mealPhotoButton","mealCameraButton","mealPhotoInput","mealCameraInput","mealPhotoMessage",
+  "mealPhotoViewer","mealPhotoLarge","mealEmptyState",
+  "mealAnalyzeButton","mealAnalyzeLabel","mealNutritionStatus","mealNutritionResult","mealNutritionAssumption","mealNutritionClear","mealAIConnect",
+  "mealKcalInput","mealCarbsInput","mealProteinInput","mealFatInput",
+  "mealListCount","mealDayStatus",
+  "mealDailyKcal","mealDailyCarbs","mealDailyProtein","mealDailyFat","mealDailyCoverage","mealDailyNote",
+  "mealQuickCamera","mealQuickText","mealActionsDialog","mealActionsTitle","mealActionsSummary","mealActionEdit","mealActionRepeat","mealActionDelete","mealDeleteLabel",
+  "workoutDateLabel","workoutCurrentStatus",
+  "dashboardWaterValue","dashboardWaterSub","dashboardWaterRing",
+  "dashboardQuickWater","dashboardCustomWater","dashboardToiletSub",
+  "dashboardMedicineSub","dashboardMedicineUnit","dashboardSupplementSub","dashboardSupplementUnit",
+  "dashboardMealValue","dashboardWorkoutValue","dashboardMedicineValue","dashboardSupplementValue","dashboardToiletValue",
+  "dashboardMealProtein","dashboardMealCarbs","dashboardMealFat","dashboardMealCoverage",
+  "accountAvatarButton","accountAvatar","accountLoginButton",
+  "accountGoalButton","accountGoalValue","accountReminderButton","accountReminderValue","accountSettingsButton","accountExportButton",
+  "accountReminderDetail","accountCupButton","accountCupValue","accountSettingsValue",
 ].forEach(id => { const el = $("#"+id); if (el) E[id] = el; });
 
+const mealEditorKeyboard = createMealEditorKeyboard(E.mealDialog);
+const historyPage = createHistoryPage(E.timelinePanel, {
+  storage,
+  openDay: day => { renderDayDetail(day); E.historyDialog.showModal(); },
+});
+const bodyMeasurementsPage = createBodyMeasurementsPage({ storage, showToast });
+const nutritionGoalsPage = createNutritionGoalsPage({ storage, showToast });
+const foodCatalogPage = createFoodCatalogPage({ storage, showToast });
+const assistantPage = createAssistantPage(E.assistantPanel, {
+  storage,
+  getUser: () => currentUser,
+  verifyEmail: user => { if (auth) auth.languageCode = getLang() === "zh" ? "zh-CN" : "en"; return sendEmailVerification(user); },
+  login: () => { setAuthMode("login"); E.authDialog.showModal(); },
+});
+
 // ========== 事件绑定 ==========
+// Dialog autofocus can inherit a visible focus ring on iOS after touch input.
+// Show a close-button focus ring only when the user is navigating by keyboard.
+document.documentElement.dataset.focusInput = "pointer";
+document.addEventListener("pointerdown", () => { document.documentElement.dataset.focusInput = "pointer"; }, { capture: true, passive: true });
+document.addEventListener("keydown", event => {
+  if (["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey) document.documentElement.dataset.focusInput = "keyboard";
+}, true);
+
 document.querySelectorAll(".source-card").forEach(btn => {
   btn.addEventListener("click", () => addRecord(btn.dataset.source, Number(btn.dataset.amount)));
 });
@@ -93,28 +168,28 @@ if (E.registerTab) E.registerTab.addEventListener("click", () => setAuthMode("re
 if (E.authForm) E.authForm.addEventListener("submit", handleAuthSubmit);
 if (E.authDialogClose) E.authDialogClose.addEventListener("click", () => E.authDialog.close());
 
-// 同步按钮
-if (E.syncButton) E.syncButton.addEventListener("click", () => {
-  if (currentUser) { openProfile(); }
-  else { setAuthMode("login"); E.authDialog.showModal(); }
-});
-
-// 个人主页
-E.avatarButton.addEventListener("click", openProfile);
-E.profileGoalButton.addEventListener("click", () => { E.profileDialog.close(); E.goalInput.value = dailyGoal; addBackButton(E.goalDialog, openProfile); E.goalDialog.showModal(); setTimeout(() => E.goalInput.select(), 50); });
-E.profileHistoryButton.addEventListener("click", () => { E.profileDialog.close(); loadHistory(); addBackButton(E.historyDialog, openProfile); E.historyDialog.showModal(); });
-E.profileExportButton.addEventListener("click", exportData);
+// 账户只负责登录/退出；健康设置统一放在“我的”。
 E.profileLogoutButton.addEventListener("click", () => { E.profileDialog.close(); if (currentUser) { signOut(auth); } else { setAuthMode("login"); E.authDialog.showModal(); } });
-E.editAvatarButton.addEventListener("click", openAvatarEditor);
 E.avatarSaveButton.addEventListener("click", saveAvatar);
-E.goalButton = E.profileGoalButton;
+E.avatarChooseButton.addEventListener("click", () => E.avatarFileInput.click());
+E.avatarFileInput.addEventListener("change", selectAvatarFile);
+E.avatarResetButton.addEventListener("click", () => {
+  avatarSelectionVersion++;
+  avatarDraft.url = "";
+  E.avatarMessage.textContent = "已恢复默认头像，保存后生效";
+  E.avatarSaveButton.disabled = false;
+  updateAvatarPreview();
+});
+E.avatarDialog.addEventListener("close", () => { avatarSelectionVersion++; });
+E.goalButton = E.accountGoalButton;
 E.goalForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const goal = Number(E.goalInput.value);
   if (!E.goalForm.reportValidity() || goal < 500 || goal > 10000) return;
   try {
     await storage.updateProfile({ dailyGoal: goal });
-    dailyGoal = goal; E.goalDialog.close(); E.profileGoalVal.textContent = `${goal} ml`; render();
+    dailyGoal = goal; E.goalDialog.close(); render();
+    renderAccountPage();
     showToast(`每日目标已设为 ${goal} ml`, false);
   } catch (e) { showToast(toFriendlyError(e), false); }
 });
@@ -125,20 +200,9 @@ E.customForm.addEventListener("submit", (event) => {
   addRecord(E.customName.value.trim(), Number(E.customAmount.value));
   E.customDialog.close();
 });
-E.previousDay.addEventListener("click", () => changeDay(-1));
-E.nextDay.addEventListener("click", () => changeDay(1));
-E.datePickerButton.addEventListener("click", () => {
-  E.datePicker.value = selectedDate;
-  if (typeof E.datePicker.showPicker === "function") E.datePicker.showPicker();
-  else E.datePicker.click();
-});
-E.datePicker.addEventListener("change", () => {
-  if (!E.datePicker.value) return;
-  const today = toDateKey(new Date());
-  selectedDate = E.datePicker.value > today ? today : E.datePicker.value;
-  loadDay();
-});
-E.undoButton.addEventListener("click", undoDelete);
+E.undoButton.addEventListener("click", undoRecordAction);
+E.recordTimeForm.addEventListener("submit", handleRecordTimeSubmit);
+E.recordTimeDialog.addEventListener("close", () => { recordTimeDraft = null; });
 E.historyList.addEventListener("click", (event) => {
   const delBtn = event.target.closest(".delete-record");
   if (delBtn) { deleteRecord(delBtn.dataset.id); return; }
@@ -148,7 +212,7 @@ E.historyList.addEventListener("click", (event) => {
 E.historyContent.addEventListener("click", (event) => {
   // 优先检查返回按钮（避免行点击冲突）
   const backBtn = event.target.closest(".history-back-btn");
-  if (backBtn) { loadHistory(); return; }
+  if (backBtn) { E.historyDialog.close(); return; }
   // 检查历史行点击 → 进入日详情
   const row = event.target.closest(".hist-row");
   if (!row) return;
@@ -156,20 +220,173 @@ E.historyContent.addEventListener("click", (event) => {
   if (!isNaN(idx) && historyDayData[idx]) renderDayDetail(historyDayData[idx]);
 });
 
-[E.goalDialog, E.customDialog, E.customSupplementDialog, E.customMedicineDialog, E.historyDialog, E.authDialog].forEach(dlg => {
+[E.goalDialog, E.recordTimeDialog, E.customDialog, E.customSupplementDialog, E.customMedicineDialog, E.historyDialog, E.authDialog, E.mealDialog, E.mealPhotoViewer, E.mealActionsDialog, E.supplementPlanDialog, E.medicinePlanDialog].forEach(dlg => {
   if (!dlg) return;
   dlg.addEventListener("click", (event) => {
     const b = dlg.getBoundingClientRect();
-    if (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom) dlg.close();
+    if (event.target === dlg && (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom)) dlg.close();
   });
 });
 
-E.waterTab.addEventListener("click", () => switchTab("water"));
-E.medicineTab.addEventListener("click", () => switchTab("medicine"));
-E.supplementTab.addEventListener("click", () => switchTab("supplement"));
+E.overviewTab.addEventListener("click", () => switchMain("overview"));
+E.assistantTab.addEventListener("click", () => switchMain("assistant"));
+E.historyTab.addEventListener("click", () => switchMain("history"));
+E.accountTab.addEventListener("click", () => switchMain("account"));
+E.detailBackButton.addEventListener("click", () => switchMain("overview"));
+document.querySelectorAll("[data-detail]").forEach(button => {
+  button.addEventListener("click", () => openDetail(button.dataset.detail));
+});
+E.dashboardQuickWater.addEventListener("click", async () => {
+  const cup = userCups[0] || DEFAULT_CUPS[0];
+  E.dashboardQuickWater.disabled = true;
+  try { await addRecord(cup.name, Number(cup.amount)); }
+  finally { E.dashboardQuickWater.disabled = false; }
+});
+E.dashboardCustomWater.addEventListener("click", () => {
+  E.customDialog.showModal();
+  setTimeout(() => E.customAmount.select(), 50);
+});
+document.querySelectorAll("[data-home-toilet]").forEach(button => {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try { await addToiletRecord(button.dataset.homeToilet); }
+    finally { button.disabled = false; }
+  });
+});
+if (E.overviewMealCard) E.overviewMealCard.addEventListener("click", () => switchTab("meal"));
+if (E.overviewWorkoutCard) E.overviewWorkoutCard.addEventListener("click", () => switchTab("workout"));
+if (E.overviewMedicineCard) E.overviewMedicineCard.addEventListener("click", () => switchTab("medicine"));
+if (E.overviewSupplementCard) E.overviewSupplementCard.addEventListener("click", () => switchTab("supplement"));
+if (E.overviewToiletCard) E.overviewToiletCard.addEventListener("click", () => openDetail("toilet"));
+
+if (E.accountAvatarButton) E.accountAvatarButton.addEventListener("click", openAvatarEditor);
+if (E.accountLoginButton) E.accountLoginButton.addEventListener("click", () => currentUser ? openProfile() : (setAuthMode("login"), E.authDialog.showModal()));
+if (E.accountGoalButton) E.accountGoalButton.addEventListener("click", () => {
+  E.goalInput.value = dailyGoal;
+  E.goalDialog.showModal();
+  setTimeout(() => E.goalInput.select(), 50);
+});
+if (E.accountReminderButton) E.accountReminderButton.addEventListener("click", openReminderDialog);
+if (E.accountSettingsButton) E.accountSettingsButton.addEventListener("click", openSettingsDialog);
+if (E.accountExportButton) E.accountExportButton.addEventListener("click", exportData);
+E.accountCupButton.addEventListener("click", openCupEditor);
+[E.cupDialog, E.settingsDialog].forEach(dialog => dialog.addEventListener("close", renderAccountPage));
+for (const type of ["medicine", "supplement"]) {
+  const planDialog = E[`${type}PlanDialog`];
+  E[type === "medicine" ? "accountMedicineButton" : "accountSupplementButton"].addEventListener("click", () => {
+    renderItemPlan(type);
+    planDialog.showModal();
+  });
+  E[`${type}PlanAdd`].addEventListener("click", () => openAddDialog(type));
+  E[`${type}PlanList`].addEventListener("click", event => {
+    const edit = event.target.closest("[data-plan-edit]");
+    if (edit) openEditDialog(type, edit.dataset.planEdit);
+  });
+  E[`${type}PlanList`].addEventListener("change", async event => {
+    const toggle = event.target.closest("[data-plan-toggle]");
+    if (!toggle) return;
+    const items = type === "medicine" ? userMedicines : userSupplements;
+    const next = items.map(item => item.name === toggle.dataset.planToggle ? { ...item, enabled: toggle.checked } : item);
+    if (type === "medicine") userMedicines = next; else userSupplements = next;
+    refreshItemPlan(type);
+    await storage.saveItems(type, next);
+  });
+  getDlg(type).dialog.addEventListener("close", () => {
+    renderItemPlan(type);
+    if (itemPlanReturn === type) {
+      itemPlanReturn = null;
+      if (!planDialog.open) planDialog.showModal();
+    }
+  });
+}
+
+document.querySelectorAll("[data-intake-nav]").forEach(button => button.addEventListener("click", () => switchTab(button.dataset.intakeNav)));
 
 E.medicineWorkoutToggle.addEventListener("click", () => toggleWorkoutDay());
-E.supplementWorkoutToggle.addEventListener("click", () => toggleWorkoutDay());
+
+if (E.mealForm) E.mealForm.addEventListener("submit", handleMealSubmit);
+document.querySelectorAll("[data-meal-icon]").forEach(element => { element.innerHTML = mealIcon(element.dataset.mealIcon); });
+E.mealQuickAdd?.addEventListener("click", () => openMealDialog());
+E.mealQuickCamera?.addEventListener("click", () => openMealDialog("meal", null, { mode: "camera" }));
+E.mealQuickText?.addEventListener("click", () => openMealDialog("meal", null, { mode: "text" }));
+E.mealAnalyzeButton?.addEventListener("click", handleMealAnalysis);
+E.mealNutritionClear?.addEventListener("click", invalidateMealNutrition);
+E.mealAIConnect?.addEventListener("click", async () => {
+  if (!mealDraft || mealDraft.connecting) return;
+  if (!chatGPTPlan) { setAuthMode("login"); E.authDialog.showModal(); return; }
+  const draft = mealDraft;
+  draft.connecting = true;
+  E.mealAIConnect.disabled = true;
+  E.mealNutritionStatus.textContent = "正在连接 ChatGPT…";
+  renderMealPhotoDraft();
+  try { await chatGPTPlan.connect(); if (draft === mealDraft) { E.mealAIConnect.hidden = true; await handleMealAnalysis(); } }
+  catch (error) { if (draft === mealDraft) E.mealNutritionStatus.textContent = toFriendlyError(error); }
+  finally { draft.connecting = false; E.mealAIConnect.disabled = false; renderMealPhotoDraft(); }
+});
+["Kcal", "Carbs", "Protein", "Fat"].forEach(name => E[`meal${name}Input`]?.addEventListener("input", () => {
+  if (mealDraft?.nutrition) mealDraft.nutrition.source = "manual";
+}));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureMealsToday(); });
+setInterval(ensureMealsToday, 60000);
+E.mealDayList?.addEventListener("click", event => {
+  const button = event.target.closest("button");
+  if (!button || mealDayLoading) return;
+  if (button.hasAttribute("data-meal-actions")) openMealActions(button.dataset.mealActions);
+  else if (button.hasAttribute("data-empty-meal")) openMealDialog();
+  else if (button.hasAttribute("data-meal-photo")) {
+    const record = mealRecords.find(record => record.id === button.dataset.id);
+    const photo = record?.photos?.[Number(button.dataset.mealPhoto)];
+    if (isMealPhoto(photo)) { E.mealPhotoLarge.src = photo; E.mealPhotoViewer.showModal(); }
+  }
+});
+E.mealActionEdit?.addEventListener("click", () => {
+  const record = mealRecords.find(record => record.id === mealActionId);
+  if (!record || mealActionBusy) return;
+  E.mealActionsDialog.close();
+  openMealDialog("meal", record);
+});
+E.mealActionRepeat?.addEventListener("click", () => {
+  const record = mealRecords.find(record => record.id === mealActionId);
+  if (!record || mealActionBusy) return;
+  E.mealActionsDialog.close();
+  openMealDialog("meal", record, { repeat: true });
+});
+E.mealActionDelete?.addEventListener("click", async () => {
+  if (mealActionBusy) return;
+  if (E.mealActionDelete.dataset.confirm !== "true") {
+    E.mealActionDelete.dataset.confirm = "true";
+    E.mealDeleteLabel.textContent = "确认删除这条记录";
+    return;
+  }
+  mealActionBusy = true;
+  E.mealActionDelete.disabled = E.mealActionEdit.disabled = E.mealActionRepeat.disabled = true;
+  try { await deleteMealRecord(mealActionId); E.mealActionsDialog.close(); }
+  finally { mealActionBusy = false; E.mealActionDelete.disabled = E.mealActionEdit.disabled = E.mealActionRepeat.disabled = false; }
+});
+E.mealPhotoButton?.addEventListener("click", () => E.mealPhotoInput.click());
+E.mealCameraButton?.addEventListener("click", () => E.mealCameraInput.click());
+[E.mealPhotoInput, E.mealCameraInput].forEach(input => input?.addEventListener("change", handleMealPhotos));
+E.mealNameInput?.addEventListener("input", () => {
+  if (E.mealNameInput.value.trim()) captureMealTime();
+  if (mealDraft?.nutrition || mealDraft?.analyzing) invalidateMealNutrition();
+  else renderMealPhotoDraft();
+});
+E.mealTimeInput?.addEventListener("input", () => {
+  if (!mealDraft) return;
+  mealDraft.clock.setTime(E.mealTimeInput.value);
+  E.mealTimeHint.textContent = "已手动设置吃饭时间。";
+});
+E.mealPhotoPreview?.addEventListener("click", event => {
+  const button = event.target.closest("[data-remove-photo]");
+  if (!button || !mealDraft || mealSaving) return;
+  mealDraft.photos.splice(Number(button.dataset.removePhoto), 1);
+  invalidateMealNutrition();
+  renderMealPhotoDraft();
+});
+E.mealDialog?.addEventListener("close", () => { mealEditorKeyboard.close(); mealSelectionVersion++; mealDraft?.analysisController?.abort(); mealDraft = null; });
+document.querySelectorAll("[data-workout-preset]").forEach(button => {
+  button.addEventListener("click", () => markWorkoutDay(button.dataset.workoutPreset));
+});
 
 E.deleteSupplementBtn.addEventListener("click", () => {
   if (currentEditItem?.type === "supplement") deleteCustomItem("supplement", currentEditItem.name);
@@ -178,14 +395,8 @@ E.deleteMedicineBtn.addEventListener("click", () => {
   if (currentEditItem?.type === "medicine") deleteCustomItem("medicine", currentEditItem.name);
 });
 
-E.customSupplementButton.addEventListener("click", () => openAddDialog("supplement"));
 E.customSupplementForm.addEventListener("submit", (e) => handleItemFormSubmit(e, "supplement"));
 E.supplementGrid.addEventListener("click", (e) => handleGridClick(e, "supplement"));
-E.supplementHistoryList.addEventListener("click", (e) => {
-  const delBtn = e.target.closest(".delete-record");
-  if (delBtn) { deleteItemRecord("supplement", delBtn.dataset.id); return; }
-  handleTimeEditClick(e);
-});
 
 document.querySelectorAll(".toilet-btn").forEach(btn => {
   btn.addEventListener("click", () => addToiletRecord(btn.dataset.type));
@@ -196,38 +407,34 @@ E.toiletHistoryList.addEventListener("click", (e) => {
   handleTimeEditClick(e);
 });
 
-E.customMedicineButton.addEventListener("click", () => openAddDialog("medicine"));
 E.customMedicineForm.addEventListener("submit", (e) => handleItemFormSubmit(e, "medicine"));
 E.medicineGrid.addEventListener("click", (e) => handleGridClick(e, "medicine"));
-E.medicineHistoryList.addEventListener("click", (e) => {
-  const delBtn = e.target.closest(".delete-record");
-  if (delBtn) { deleteItemRecord("medicine", delBtn.dataset.id); return; }
-  handleTimeEditClick(e);
-});
 
 // 水杯编辑
 if (E.addCupBtn) E.addCupBtn.addEventListener("click", addCustomCup);
 if (E.editCupsBtn) E.editCupsBtn.addEventListener("click", openCupEditor);
 // 统计
-if (E.profileStatsButton) E.profileStatsButton.addEventListener("click", () => { E.profileDialog.close(); addBackButton(E.statsDialog, openProfile); openStats(); });
+E.accountStatsButton.addEventListener("click", openStats);
 if (E.statsWeekTab) E.statsWeekTab.addEventListener("click", () => { E.statsWeekTab.classList.add("active"); E.statsMonthTab.classList.remove("active"); renderStatsChart("week"); });
 if (E.statsMonthTab) E.statsMonthTab.addEventListener("click", () => { E.statsMonthTab.classList.add("active"); E.statsWeekTab.classList.remove("active"); renderStatsChart("month"); });
 // 提醒
-if (E.profileReminderButton) E.profileReminderButton.addEventListener("click", () => { E.profileDialog.close(); addBackButton(E.reminderDialog, openProfile); openReminderDialog(); });
 if (E.addReminderTimeBtn) E.addReminderTimeBtn.addEventListener("click", () => {
   reminderSettings.times.push("12:00");
   renderReminderTimes();
 });
 if (E.saveReminderBtn) E.saveReminderBtn.addEventListener("click", saveReminderSettings);
 // 设置
-if (E.profileSettingsButton) E.profileSettingsButton.addEventListener("click", () => { E.profileDialog.close(); addBackButton(E.settingsDialog, openProfile); openSettingsDialog(); });
-if (E.soundEnabled) E.soundEnabled.addEventListener("change", () => { appSettings.soundEnabled = E.soundEnabled.checked; storage.updateSettings(appSettings); });
-if (E.vibrationEnabled) E.vibrationEnabled.addEventListener("change", () => { appSettings.vibrationEnabled = E.vibrationEnabled.checked; storage.updateSettings(appSettings); });
+if (E.soundEnabled) E.soundEnabled.addEventListener("change", () => { appSettings.soundEnabled = E.soundEnabled.checked; storage.updateSettings({ soundEnabled: appSettings.soundEnabled }); });
+if (E.vibrationEnabled) E.vibrationEnabled.addEventListener("change", () => { appSettings.vibrationEnabled = E.vibrationEnabled.checked; storage.updateSettings({ vibrationEnabled: appSettings.vibrationEnabled }); });
 if (E.languageSelect) E.languageSelect.addEventListener("change", () => {
   const lang = E.languageSelect.value;
   setLang(lang); appSettings.language = lang;
   storage.updateSettings({ language: lang });
   updatePageLanguage();
+});
+window.addEventListener("appearance-changed", () => {
+  if (document.body.dataset.section === "account") renderAccountPage();
+  if (E.statsDialog.open) void renderStatsChart(E.statsMonthTab.classList.contains("active") ? "month" : "week");
 });
 // 智能推荐
 if (E.smartWeight) E.smartWeight.addEventListener("input", updateSmartGoal);
@@ -265,8 +472,6 @@ document.addEventListener("click", (e) => {
 });
 
 // 离线检测
-window.addEventListener("online", updateOnlineStatus);
-window.addEventListener("offline", updateOnlineStatus);
 
 // ========== 排程工具 ==========
 function isItemActiveOnDay(sch, wd, wo) {
@@ -296,53 +501,17 @@ function getSkipReason(type, item) {
   return "";
 }
 
-// ========== 在线状态 ==========
-function updateOnlineStatus() {
-  const online = navigator.onLine;
-  if (E.offlineBadge) E.offlineBadge.hidden = online;
-}
-
-// ========== 同步按钮 UI ==========
-function updateSyncButton() {
-  if (!E.syncButton) return;
-  if (currentUser) {
-    E.syncIcon.textContent = "✅";
-    E.syncLabel.textContent = "已同步";
-    E.syncButton.title = "个人主页";
-  } else {
-    E.syncIcon.textContent = navigator.onLine ? "☁️" : "📡";
-    E.syncLabel.textContent = "本地模式";
-    E.syncButton.title = "登录以同步数据";
-  }
-  // 同步离线标识
-  if (E.offlineBadge) E.offlineBadge.hidden = navigator.onLine;
-}
-
 // ========== 健身日 ==========
-async function loadWorkoutDay() {
-  if (workoutDaysCache.hasOwnProperty(selectedDate)) {
-    isWorkoutDay = workoutDaysCache[selectedDate];
-    return;
-  }
-  isWorkoutDay = await storage.getWorkoutDay(selectedDate);
-  workoutDaysCache[selectedDate] = isWorkoutDay;
-}
-
 async function toggleWorkoutDay() {
-  const newVal = !isWorkoutDay;
-  await storage.setWorkoutDay(selectedDate, newVal);
-  isWorkoutDay = newVal;
-  workoutDaysCache[selectedDate] = newVal;
-  updateWorkoutToggleUI();
-  const activeTab = E.waterPanel.hidden ? (E.medicinePanel.hidden ? "supplement" : "medicine") : "water";
-  if (activeTab !== "water") renderItemList(activeTab);
-  showToast(newVal ? "已标记为健身日 🏋️" : "已取消健身日", false);
+  if (isWorkoutDay) await markWorkoutDay("休息日");
+  else switchTab("workout");
 }
 
 function updateWorkoutToggleUI() {
-  [E.medicineWorkoutToggle, E.supplementWorkoutToggle].forEach(btn => {
+  [E.medicineWorkoutToggle].forEach(btn => {
     if (!btn) return;
     btn.classList.toggle("active", isWorkoutDay);
+    btn.setAttribute("aria-pressed", String(isWorkoutDay));
     const indicator = btn.querySelector(".workout-indicator");
     if (indicator) indicator.textContent = isWorkoutDay ? "✓" : "";
     const label = btn.querySelector(".workout-label");
@@ -350,48 +519,185 @@ function updateWorkoutToggleUI() {
   });
 }
 
-// ========== 标签页切换 ==========
-function switchTab(tab) {
-  const tabs = [
-    { id: "water", button: E.waterTab, panel: E.waterPanel, title: "今天喝水了吗？" },
-    { id: "medicine", button: E.medicineTab, panel: E.medicinePanel, title: "今天吃药了吗？" },
-    { id: "supplement", button: E.supplementTab, panel: E.supplementPanel, title: "今天吃补剂了吗？" },
-  ];
-  tabs.forEach(t => {
-    const active = t.id === tab;
-    t.button.classList.toggle("active", active);
-    t.button.setAttribute("aria-selected", active);
-    t.panel.hidden = !active;
-    if (active) document.querySelector(".topbar h1").textContent = t.title;
-  });
-  if (tab === "water") render();
-  else renderItemList(tab);
+// ========== 主导航与详情 ==========
+const DETAIL_TITLES = {
+  water: "饮水记录",
+  toilet: "如厕记录",
+  meal: "饮食日记",
+  workout: "训练日志",
+  medicine: "药物计划",
+  supplement: "每日补剂",
+};
+
+function hideAllContent() {
+  assistantPage.close();
+  [E.dashboardPanel, E.assistantPanel, E.timelinePanel, E.accountPanel, E.waterPanel, E.toiletPanel, E.mealPanel, E.workoutPanel, E.medicinePanel, E.supplementPanel]
+    .forEach(panel => { if (panel) panel.hidden = true; });
 }
+
+function setPrimaryTab(activeId) {
+  [["overview", E.overviewTab], ["assistant", E.assistantTab], ["history", E.historyTab], ["account", E.accountTab]].forEach(([id, button]) => {
+    const active = id === activeId;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+}
+
+function switchMain(section) {
+  navigationRevision++;
+  hideAllContent();
+  E.detailBackBar.hidden = true;
+  document.body.dataset.section = section;
+  const title = document.querySelector(".topbar h1");
+  if (section === "assistant") {
+    E.assistantPanel.hidden = false;
+    title.textContent = "健康助手";
+    assistantPage.open();
+  } else if (section === "history") {
+    E.timelinePanel.hidden = false;
+    title.textContent = "历史";
+    loadHistoryPage();
+  } else if (section === "account") {
+    E.accountPanel.hidden = false;
+    title.textContent = "我的";
+    renderAccountPage();
+  } else {
+    E.dashboardPanel.hidden = false;
+    title.textContent = "今日健康";
+    const today = toDateKey(new Date());
+    if (selectedDate !== today) {
+      selectedDate = today;
+      loadDay();
+    } else {
+      renderDashboard();
+    }
+    section = "overview";
+  }
+  setPrimaryTab(section);
+  if (E.appShell) E.appShell.scrollTo({ top: 0, behavior: "auto" });
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function openDetail(type) {
+  const resolvedType = type;
+  const panel = E[`${resolvedType}Panel`];
+  if (!panel) return;
+  navigationRevision++;
+  // Intake pages always show today, even after viewing a past meal date.
+  if (["medicine", "supplement"].includes(resolvedType)) {
+    const today = toDateKey(new Date());
+    if (selectedDate !== today) {
+      selectedDate = today;
+      void loadDay();
+    }
+  }
+  hideAllContent();
+  panel.hidden = false;
+  E.detailBackBar.hidden = false;
+  document.body.dataset.section = "detail";
+  document.querySelector(".topbar h1").textContent = DETAIL_TITLES[resolvedType];
+  setPrimaryTab("overview");
+  if (resolvedType === "water") render();
+  else if (resolvedType === "toilet") renderToiletHistory();
+  else if (resolvedType === "meal") {
+    const today = toDateKey(new Date());
+    if (selectedDate !== today) { selectedDate = today; void loadDay(); }
+    else renderMeals();
+  }
+  else if (resolvedType === "workout") renderWorkout();
+  else renderItemList(resolvedType);
+  if (E.appShell) E.appShell.scrollTo({ top: 0, behavior: "auto" });
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function switchTab(tab) { openDetail(tab); }
 
 // ========== 初始化 ==========
 async function initialize() {
   try {
+    void initializeNativePlatform().catch(() => {});
+    void initializeAppearance(storage).catch(() => {});
+    // 先用本地缓存渲染首屏（含上次同步的云端数据），登录态返回后 applyUser 会刷新
+    await bootFromCache();
     const fbConfig = await getFirebaseConfig();
     const app = initializeApp(fbConfig);
-    auth = getAuth(app); db = getFirestore(app);
+    auth = getAuth(app);
+    try {
+      // 开启持久化缓存：写入先本地落盘立即返回，后台再同步；读取也有缓存兜底
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }),
+      });
+    } catch {
+      db = getFirestore(app);
+    }
     storage.setUser(null, null);
     onAuthStateChanged(auth, applyUser);
-  } catch (e) { showAuthMessage(`初始化失败：${e.message}`); if (E.authSubmit) E.authSubmit.disabled = true; }
+  } catch (e) {
+    showAuthMessage(`初始化失败：${e.message}`);
+    if (E.authSubmit) E.authSubmit.disabled = true;
+    await applyUser(null);
+  }
+}
+
+// 启动时立即用 localStorage 缓存渲染界面，避免等待登录态期间显示空白/默认数据。
+// 未走云端路径（storage 尚无用户），所有读取都命中本地缓存。
+async function bootFromCache() {
+  const navigationAtStart = navigationRevision;
+  try { bootUser = JSON.parse(localStorage.getItem(LAST_USER_KEY) || "null"); } catch { bootUser = null; }
+  storage.setUser(null, null);
+  const profile = await storage.getProfile();
+  dailyGoal = profile.dailyGoal || 2000;
+  userMedicines = (profile.medicines || [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
+  userSupplements = (profile.supplements || [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
+  avatarType = profile.avatarType || "default";
+  avatarColor = profile.avatarColor || "#168d84";
+  avatarUrl = profile.avatarUrl || "";
+  userCups = await storage.getCups();
+  reminderSettings = await storage.getReminder();
+  appSettings = await storage.getSettings();
+  setLang(appSettings.language || "zh");
+  if (E.languageSelect) E.languageSelect.value = appSettings.language || "zh";
+  renderAvatar();
+  renderCups();
+  void loadDay();
+  if (navigationRevision === navigationAtStart) switchMain("overview");
+  updatePageLanguage();
 }
 
 async function applyUser(user) {
+  const userId = user?.uid ?? null;
+  const sameAccount = appliedUserId === userId;
+  const accountChanged = appliedUserId !== undefined && !sameAccount;
+  appliedUserId = userId;
+  bootUser = null;
   currentUser = user;
+  // Identity callbacks refresh account metadata, never navigate. A repeated
+  // callback for the same account must also preserve caches and screen filters.
+  if (sameAccount) {
+    E.profileEmail.textContent = user?.email || "本地模式（未登录）";
+    renderAvatar();
+    renderSyncStatus();
+    return;
+  }
+  // Invalidate old day requests before switching the storage account.
+  requestVersion++;
+  if (accountChanged) {
+    hideToast();
+    historyPage.reset();
+    historyDayData = [];
+  }
+  assistantPage.resetUser();
   if (!user) {
     // 未登录 → 本地模式，应用仍然可用
+    localStorage.removeItem(LAST_USER_KEY);
     storage.setUser(null, null);
-    records = []; medicineRecords = []; supplementRecords = []; toiletRecords = [];
+    const generation = storage.sync.generation;
+    records = []; medicineRecords = []; supplementRecords = []; toiletRecords = []; mealRecords = [];
     userMedicines = []; userSupplements = [];
-    isWorkoutDay = false; workoutDaysCache = {};
-    E.authShell.hidden = true;
-    E.appShell.hidden = false;
-    updateSyncButton();
+    isWorkoutDay = false; workoutDetail = {}; workoutDaysCache = {};
     // 从 localStorage 加载 profile
     const profile = await storage.getProfile();
+    if (generation !== storage.sync.generation) return;
     dailyGoal = profile.dailyGoal || 2000;
     userMedicines = profile.medicines || [...DEFAULT_MEDICINES];
     userSupplements = profile.supplements || [...DEFAULT_SUPPLEMENTS];
@@ -401,41 +707,51 @@ async function applyUser(user) {
     userCups = await storage.getCups();
     reminderSettings = await storage.getReminder();
     appSettings = await storage.getSettings();
+    if (generation !== storage.sync.generation) return;
     setLang(appSettings.language || "zh");
     if (E.languageSelect) E.languageSelect.value = appSettings.language || "zh";
     renderAvatar();
     renderCups();
-    await loadDay();
-    switchTab("water");
+    void loadDay();
+    if (!E.timelinePanel.hidden) void loadHistoryPage();
     updatePageLanguage();
     startReminderCheck();
     return;
   }
   // 已登录 → 云端模式
   storage.setUser(user, db);
-  E.authShell.hidden = true;
-  E.appShell.hidden = false;
+  const generation = storage.sync.generation;
   E.profileEmail.textContent = user.email || "已登录";
-  updateSyncButton();
+  // 记住登录身份，下次启动时首屏直接显示云端账户
+  try {
+    localStorage.setItem(LAST_USER_KEY, JSON.stringify({ email: user.email || "", displayName: user.displayName || "" }));
+  } catch { /* 存储不可用时仅影响首屏展示 */ }
 
-  // 检查是否有本地数据需要合并
+  // 同步状态只在“我的”页面展示，不弹出同步通知。
   if (storage.hasLocalData()) {
-    showToast("正在同步本地数据到云端...", false);
     try {
-      await storage.mergeLocalToCloud();
-      showToast("本地数据已同步到云端 ✅", false);
-    } catch (e) {
-      showToast("云端同步失败，数据保留在本地", false);
-    }
+      void storage.mergeLocalToCloud().catch(() => {});
+    } catch (e) { /* 存储层保留本地数据并更新同步状态。 */ }
   }
+
+  // 先用本地缓存渲染头像，避免等待云端 profile 期间闪现默认头像；
+  // 云端数据返回后 loadProfile 会再次渲染覆盖。
+  const cachedProfile = storage.getCachedProfile();
+  avatarType = cachedProfile.avatarType || "default";
+  avatarColor = cachedProfile.avatarColor || "#168d84";
+  avatarUrl = cachedProfile.avatarUrl || "";
+  renderAvatar();
 
   userCups = await storage.getCups();
   reminderSettings = await storage.getReminder();
   appSettings = await storage.getSettings();
+  if (generation !== storage.sync.generation) return;
   setLang(appSettings.language || "zh");
   if (E.languageSelect) E.languageSelect.value = appSettings.language || "zh";
-  await Promise.all([loadProfile(), loadDay()]);
-  switchTab("water");
+  // Uploads and server reads refresh in the background; keep the cached day usable.
+  void loadProfile();
+  void loadDay();
+  if (!E.timelinePanel.hidden) void loadHistoryPage();
   updatePageLanguage();
   startReminderCheck();
 }
@@ -476,26 +792,19 @@ function showAuthMessage(m, s = false) { if (E.authMessage) { E.authMessage.text
 
 // ========== 加载 ==========
 async function loadProfile() {
+  const generation = storage.sync.generation;
   try {
     const profile = await storage.getProfile();
+    if (generation !== storage.sync.generation) return;
     dailyGoal = Number(profile.dailyGoal) || 2000;
     userMedicines = (Array.isArray(profile.medicines) ? profile.medicines : [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
     userSupplements = (Array.isArray(profile.supplements) ? profile.supplements : [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
-    // 迁移旧 "workout" 排程 → "workout_weekday"（保持工作日+健身日原有行为）
-    let migrated = false;
-    for (const arr of [userMedicines, userSupplements]) {
-      for (const item of arr) {
-        if (item.schedule === "workout") { item.schedule = "workout_weekday"; migrated = true; }
-      }
-    }
-    if (migrated && currentUser) {
-      storage.saveItems("medicine", userMedicines).catch(() => {});
-      storage.saveItems("supplement", userSupplements).catch(() => {});
-    }
+    // Preserve the chosen schedule, including training on weekends.
     avatarType = profile.avatarType || "default";
     avatarColor = profile.avatarColor || AVATAR_COLORS[0];
     avatarUrl = profile.avatarUrl || "";
     userCups = await storage.getCups();
+    if (generation !== storage.sync.generation) return;
     renderAvatar();
     renderCups();
     render();
@@ -503,55 +812,37 @@ async function loadProfile() {
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
-async function loadDay() {
+function loadDay() {
   const version = ++requestVersion;
-  renderDate();
-  E.historyList.innerHTML = '<div class="empty-state">正在读取记录...</div>';
-
-  try {
-    const [waterLogs, medLogs, suppLogs, toiletLogs] = await Promise.all([
-      storage.getWaterLogs(selectedDate),
-      storage.getLogs("medicine", selectedDate),
-      storage.getLogs("supplement", selectedDate),
-      storage.getLogs("toilet", selectedDate),
-      loadWorkoutDay(),
-    ]);
-    if (version !== requestVersion) return;
-
-    records = waterLogs;
-    medicineRecords = medLogs;
-    supplementRecords = suppLogs;
-    toiletRecords = toiletLogs;
+  const dateKey = selectedDate;
+  mealDayLoading = false;
+  return loadDaySnapshot(storage, dateKey, partial => {
+    if (partial.water) records = partial.water;
+    if (partial.medicine) medicineRecords = partial.medicine;
+    if (partial.supplement) supplementRecords = partial.supplement;
+    if (partial.toilet) toiletRecords = partial.toilet;
+    if (partial.meal) mealRecords = partial.meal;
+    if (partial.workout) {
+      workoutDetail = partial.workout;
+      isWorkoutDay = partial.workout.isWorkout === true;
+      workoutDaysCache[dateKey] = isWorkoutDay;
+    }
     updateWorkoutToggleUI();
-  } catch (e) {
-    if (version !== requestVersion) return;
-    records = []; medicineRecords = []; supplementRecords = []; toiletRecords = [];
-    showToast(toFriendlyError(e), false);
-  }
-  render();
-  renderItemList("medicine"); renderItemList("supplement");
+    render();
+    renderMeals();
+    renderWorkout();
+    renderItemList("medicine"); renderItemList("supplement");
+  }, () => version === requestVersion && dateKey === selectedDate);
 }
 
 // ========== 头像 & 个人主页 ==========
 function renderAvatar() {
-  const svg = genAvatarSVG(avatarColor, 42);
-  if (avatarType === "custom" && avatarUrl) {
-    E.avatarImg.innerHTML = `<img src="${esc(avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-  } else {
-    E.avatarImg.innerHTML = svg;
-  }
-  if (avatarType === "custom" && avatarUrl) {
-    E.profileAvatar.innerHTML = `<img src="${esc(avatarUrl)}" alt="">`;
-  } else {
-    E.profileAvatar.innerHTML = svg;
-  }
-  E.profileGoalVal.textContent = `${dailyGoal} ml`;
+  renderAccountPage();
 }
 
 function openProfile() {
   E.profileEmail.textContent = currentUser?.email || "本地模式（未登录）";
-  E.profileGoalVal.textContent = `${dailyGoal} ml`;
-  // 未登录时隐藏退出按钮，改为显示登录提示
+  // 账户弹窗仅保留登录信息与登录/退出操作。
   if (E.profileLogoutButton) {
     if (currentUser) {
       E.profileLogoutButton.textContent = "🚪 退出登录";
@@ -566,58 +857,100 @@ function openProfile() {
 }
 
 function openAvatarEditor() {
+  avatarDraft = { color: avatarColor, url: avatarType === "custom" ? avatarUrl : "" };
+  avatarSelectionVersion++;
+  E.avatarFileInput.value = "";
+  E.avatarMessage.textContent = "";
+  E.avatarSaveButton.disabled = false;
   E.avatarColors.innerHTML = AVATAR_COLORS.map(c =>
-    `<span class="avatar-color-dot${c === avatarColor ? " selected" : ""}" data-color="${c}" style="background:${c}" title="${c}"></span>`
+    `<button type="button" class="avatar-color-dot${c === avatarDraft.color ? " selected" : ""}" data-color="${c}" style="background:${c}" aria-label="头像颜色 ${c}" aria-pressed="${c === avatarDraft.color}"></button>`
   ).join("");
   E.avatarColors.querySelectorAll(".avatar-color-dot").forEach(dot => {
     dot.addEventListener("click", () => {
-      E.avatarColors.querySelectorAll(".avatar-color-dot").forEach(d => d.classList.remove("selected"));
+      E.avatarColors.querySelectorAll(".avatar-color-dot").forEach(d => { d.classList.remove("selected"); d.setAttribute("aria-pressed", "false"); });
       dot.classList.add("selected");
-      avatarColor = dot.dataset.color;
+      dot.setAttribute("aria-pressed", "true");
+      avatarSelectionVersion++;
+      avatarDraft.color = dot.dataset.color;
+      avatarDraft.url = "";
+      E.avatarSaveButton.disabled = false;
+      E.avatarMessage.textContent = "已选用默认头像，保存后生效";
       updateAvatarPreview();
     });
   });
-  E.avatarUrlInput.value = avatarType === "custom" ? avatarUrl : "";
   updateAvatarPreview();
   E.profileDialog.close();
-  addBackButton(E.avatarDialog, openProfile);
   E.avatarDialog.showModal();
 }
 
 function updateAvatarPreview() {
-  E.avatarPreview.innerHTML = genAvatarSVG(avatarColor, 56);
+  E.avatarPreview.innerHTML = avatarDraft.url
+    ? `<img src="${esc(avatarDraft.url)}" alt="头像预览">`
+    : genAvatarSVG(avatarDraft.color, 88);
 }
 
-async function saveAvatar() {
-  const url = E.avatarUrlInput.value.trim();
-  if (url) { avatarType = "custom"; avatarUrl = url; }
-  else { avatarType = "default"; avatarUrl = ""; }
-  await storage.updateProfile({ avatarType, avatarColor, avatarUrl });
-  renderAvatar();
+async function selectAvatarFile() {
+  const file = E.avatarFileInput.files?.[0];
+  E.avatarFileInput.value = "";
+  if (!file) return; // Cancelling the system picker leaves the draft untouched.
+  const version = ++avatarSelectionVersion;
+  E.avatarSaveButton.disabled = true;
+  E.avatarMessage.textContent = "正在处理照片…";
+  try {
+    const url = await prepareAvatar(file);
+    if (version !== avatarSelectionVersion || !E.avatarDialog.open) return;
+    avatarDraft.url = url;
+    updateAvatarPreview();
+    E.avatarMessage.textContent = "照片已就绪，保存后生效";
+  } catch (error) {
+    if (version === avatarSelectionVersion) E.avatarMessage.textContent = error.message;
+  } finally {
+    if (version === avatarSelectionVersion) E.avatarSaveButton.disabled = false;
+  }
+}
+
+function saveAvatar() {
+  if (avatarSaving || E.avatarSaveButton.disabled) return;
+  avatarSaving = true;
+  avatarColor = avatarDraft.color;
+  avatarUrl = avatarDraft.url;
+  avatarType = avatarUrl ? "custom" : "default";
+  // updateProfile saves locally before starting the cloud request.
+  void storage.updateProfile({ avatarType, avatarColor, avatarUrl });
+  renderAccountPage();
   E.avatarDialog.close();
-  E.profileDialog.showModal();
+  avatarSaving = false;
 }
 
 [E.profileDialog, E.avatarDialog].forEach(dlg => {
   dlg.addEventListener("click", (event) => {
     const b = dlg.getBoundingClientRect();
-    if (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom) dlg.close();
+    if (event.target === dlg && (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom)) dlg.close();
   });
 });
 
 // ========== 饮水 ==========
 async function addRecord(source, amount) {
+  const generation = storage.sync.generation;
+  const logDate = selectedDate;
   try {
     const now = new Date();
-    const rec = await storage.addWaterLog({ source, amount, logDate: selectedDate, recordedAt: now });
-    records.push({ id: rec.id, source, amount, logDate: selectedDate, recordedAt: now });
+    const rec = await storage.addWaterLog({ source, amount, logDate, recordedAt: now });
+    if (generation !== storage.sync.generation) return;
+    if (logDate === selectedDate) records.push(rec);
     // 音效与震动反馈
     if (appSettings.soundEnabled) playWaterSound();
-    if (appSettings.vibrationEnabled) vibrate(30);
     // 检查是否完成目标
     const total = records.reduce((s, r) => s + Number(r.amount), 0);
+    if (appSettings.vibrationEnabled) {
+      nativeHaptic(total >= dailyGoal ? "success" : "light").then(handled => {
+        if (!handled) vibrate(30);
+      });
+    }
     if (total >= dailyGoal && appSettings.soundEnabled) playCompleteSound();
-    render(); showToast(`已记录 ${amount} ml`, false);
+    render();
+    lastRecordAction = { action: "add", type: "water", record: rec, generation };
+    showToast(`已记录 ${amount} ml`, true);
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
@@ -625,36 +958,49 @@ async function deleteRecord(id) {
   const idx = records.findIndex(r => r.id === id);
   if (idx < 0) return;
   const [rec] = records.splice(idx, 1); render();
-  lastDeleted = { record: rec, index: idx, type: "water" };
+  const action = lastRecordAction = { action: "delete", record: rec, index: idx, type: "water", generation: storage.sync.generation };
   showToast(`已删除 ${rec.amount} ml 记录`, true);
   try {
     await storage.deleteWaterLog(id);
   } catch (e) {
     records.splice(idx, 0, rec); render();
-    lastDeleted = null;
-    showToast(toFriendlyError(e), false);
+    if (lastRecordAction === action) showToast(toFriendlyError(e), false);
   }
 }
 
-async function undoDelete() {
-  if (!lastDeleted) return;
-  const p = lastDeleted; lastDeleted = null; hideToast();
-  if (p.type === "water") {
-    try {
-      const rec = await storage.addWaterLog({ source: p.record.source, amount: p.record.amount, logDate: p.record.logDate, recordedAt: new Date(p.record.recordedAt) });
-      records.splice(p.index, 0, { ...p.record, id: rec.id }); render();
-    } catch (e) { showToast(toFriendlyError(e), false); }
-  } else if (p.type === "toilet") {
-    try {
-      const rec = await storage.addLog("toilet", { type: p.record.type, logDate: p.record.logDate, recordedAt: new Date(p.record.recordedAt) });
-      toiletRecords.splice(p.index, 0, { ...p.record, id: rec.id }); renderToiletHistory();
-    } catch (e) { showToast(toFriendlyError(e), false); }
-  } else {
-    const arr = p.type === "medicine" ? medicineRecords : supplementRecords;
-    try {
-      const rec = await storage.addLog(p.type, { name: p.record.name, dosage: p.record.dosage, count: p.record.count, logDate: p.record.logDate, recordedAt: new Date(p.record.recordedAt) });
-      arr.splice(p.index, 0, { ...p.record, id: rec.id }); renderItemList(p.type);
-    } catch (e) { showToast(toFriendlyError(e), false); }
+async function undoRecordAction() {
+  const action = lastRecordAction;
+  if (!action) return;
+  hideToast();
+  if (action.generation !== storage.sync.generation) return;
+  const { type, record } = action;
+  try {
+    let restored;
+    if (action.action === "add") {
+      if (type === "water") await storage.deleteWaterLog(record.id);
+      else await storage.deleteLog(type, record.id);
+    } else {
+      const { id, ...data } = record;
+      const payload = { ...data, recordedAt: new Date(record.recordedAt) };
+      restored = type === "water" ? await storage.addWaterLog(payload) : await storage.addLog(type, payload);
+    }
+    if (action.generation !== storage.sync.generation) return;
+    if (record.logDate === selectedDate) {
+      const rows = type === "water" ? records : type === "toilet" ? toiletRecords : type === "medicine" ? medicineRecords : supplementRecords;
+      if (action.action === "add") {
+        const index = rows.findIndex(row => row.id === record.id);
+        if (index >= 0) rows.splice(index, 1);
+      } else rows.splice(Math.min(action.index, rows.length), 0, restored);
+      if (type === "water") render();
+      else if (type === "toilet") renderToiletHistory();
+      else renderItemList(type);
+    }
+    if (!lastRecordAction) showToast(action.action === "add" ? "已撤销本次记录" : "已恢复记录", false);
+  } catch (error) {
+    if (action.generation === storage.sync.generation && !lastRecordAction) {
+      lastRecordAction = action;
+      showToast(`撤销失败：${toFriendlyError(error)}`, true);
+    }
   }
 }
 
@@ -687,54 +1033,58 @@ async function updateRecordTime(coll, id, newTime) {
       renderItemList("supplement");
     }
     showToast("时间已更新", false);
-  } catch (e) { showToast(toFriendlyError(e), false); }
+    return true;
+  } catch (e) { showToast(toFriendlyError(e), false); return false; }
 }
 
 function handleTimeEditClick(event) {
   const timeEl = event.target.closest(".time-editable");
-  if (!timeEl || timeEl.dataset.editing === "true") return;
-  const id = timeEl.dataset.id;
-  const coll = timeEl.dataset.coll;
-  const currentTime = timeEl.dataset.time;
-  timeEl.dataset.editing = "true";
-
-  const input = document.createElement("input");
-  input.type = "time";
-  input.value = currentTime;
-  input.className = "time-input";
-  timeEl.textContent = "";
-  timeEl.appendChild(input);
-  input.focus();
-
-  let saved = false;
-  const save = () => {
-    if (saved) return;
-    const newTimeStr = input.value;
-    if (!newTimeStr || newTimeStr === currentTime) {
-      saved = true;
-      timeEl.textContent = toTimeDisplay(currentTime);
-      timeEl.dataset.editing = "false";
-      return;
-    }
-    saved = true;
-    const [h, m] = newTimeStr.split(":").map(Number);
-    const d = fromDateKey(selectedDate);
-    d.setHours(h, m, 0, 0);
-    updateRecordTime(coll, id, d);
+  if (!timeEl || E.recordTimeDialog.open) return;
+  recordTimeDraft = {
+    id: timeEl.dataset.id, coll: timeEl.dataset.coll, time: timeEl.dataset.time,
+    date: selectedDate, generation: storage.sync.generation, saving: false,
   };
-  input.addEventListener("change", save);
-  input.addEventListener("blur", () => setTimeout(save, 150));
+  E.recordTimeInput.value = recordTimeDraft.time;
+  E.recordTimeSaveButton.disabled = false;
+  E.recordTimeDialog.showModal();
+}
+
+async function handleRecordTimeSubmit(event) {
+  event.preventDefault();
+  const draft = recordTimeDraft;
+  if (!draft || draft.saving || !E.recordTimeForm.reportValidity()) return;
+  if (draft.generation !== storage.sync.generation) {
+    E.recordTimeDialog.close();
+    return;
+  }
+  const time = E.recordTimeInput.value;
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return;
+  if (time === draft.time) { E.recordTimeDialog.close(); return; }
+  const [h, m] = time.split(":").map(Number);
+  const date = fromDateKey(draft.date);
+  date.setHours(h, m, 0, 0);
+  draft.saving = true;
+  E.recordTimeSaveButton.disabled = true;
+  const saved = await updateRecordTime(draft.coll, draft.id, date);
+  if (recordTimeDraft !== draft) return;
+  draft.saving = false;
+  E.recordTimeSaveButton.disabled = false;
+  if (saved) E.recordTimeDialog.close();
 }
 
 // ========== 厕所记录 ==========
 async function addToiletRecord(type) {
+  const generation = storage.sync.generation;
+  const logDate = selectedDate;
   try {
     const now = new Date();
-    const rec = await storage.addLog("toilet", { type, logDate: selectedDate, recordedAt: now });
-    toiletRecords.push({ id: rec.id, type, logDate: selectedDate, recordedAt: now });
+    const rec = await storage.addLog("toilet", { type, logDate, recordedAt: now });
+    if (generation !== storage.sync.generation) return;
+    if (logDate === selectedDate) toiletRecords.push(rec);
     renderToiletHistory();
     const label = type === "big" ? "大号" : "小号";
-    showToast(`已记录 ${label} 🧻`, false);
+    lastRecordAction = { action: "add", type: "toilet", record: rec, generation };
+    showToast(`已记录 ${label}`, true);
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
@@ -742,16 +1092,287 @@ async function deleteToiletRecord(id) {
   const idx = toiletRecords.findIndex(r => r.id === id);
   if (idx < 0) return;
   const [rec] = toiletRecords.splice(idx, 1); renderToiletHistory();
-  lastDeleted = { record: rec, index: idx, type: "toilet" };
+  const action = lastRecordAction = { action: "delete", record: rec, index: idx, type: "toilet", generation: storage.sync.generation };
   const label = rec.type === "big" ? "大号" : "小号";
   showToast(`已删除 ${label} 记录`, true);
   try {
     await storage.deleteLog("toilet", id);
   } catch (e) {
     toiletRecords.splice(idx, 0, rec); renderToiletHistory();
-    lastDeleted = null;
+    if (lastRecordAction === action) showToast(toFriendlyError(e), false);
+  }
+}
+
+// ========== 饮食日记 ==========
+function ensureMealsToday() {
+  if (E.mealPanel.hidden) return;
+  const today = toDateKey(new Date());
+  if (selectedDate !== today) { selectedDate = today; void loadDay(); }
+}
+function changeRecordDate(dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || toDateKey(fromDateKey(dateKey)) !== dateKey || dateKey > toDateKey(new Date())) return;
+  if (dateKey === selectedDate || intakeBusy.size) return;
+  selectedDate = dateKey;
+  void loadDay();
+}
+
+function openMealActions(id) {
+  const record = mealRecords.find(record => record.id === id);
+  if (!record || mealActionBusy) return;
+  mealActionId = id;
+  E.mealActionsTitle.textContent = record.name || "饮食记录";
+  const date = mealRecordDate(record);
+  E.mealActionsSummary.textContent = `${date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+  E.mealActionDelete.dataset.confirm = "false";
+  E.mealDeleteLabel.textContent = "删除记录";
+  E.mealActionsDialog.showModal();
+}
+
+function openMealDialog(type = "meal", record = null, options = {}) {
+  if (mealSaving || mealDayLoading) return;
+  mealSelectionVersion++;
+  const editing = Boolean(record && !options.repeat);
+  const today = toDateKey(new Date());
+  if (selectedDate !== today) { selectedDate = today; void loadDay(); }
+  mealDraft = { id: editing ? record.id : null, photos: [...(record?.photos || [])], processing: false,
+    nutrition: normalizeMealNutrition(record?.nutrition), nutritionVersion: 0, analyzing: false,
+    clock: new MealTimeDraft(today, editing ? toJSDate(record.recordedAt) : null) };
+  if (options.repeat) mealDraft.clock.capture();
+  // Keep older notes editable after consolidating the two text fields.
+  E.mealNameInput.value = [record?.name, record?.note].filter(value => value?.trim()).join("\n");
+  E.mealTimeInput.value = mealDraft.clock.time;
+  E.mealTimeHint.textContent = editing ? "已保留原吃饭时间，点击即可修改。" : "默认使用添加照片或文字的时间，可手动修改。";
+  E.mealDialogTitle.textContent = editing ? "编辑这一餐" : options.repeat ? "再记一餐" : "记录一餐";
+  E.mealPhotoMessage.textContent = "最多 3 张，照片和文字都可以单独保存。";
+  E.mealPhotoInput.value = E.mealCameraInput.value = "";
+  E.mealAIConnect.hidden = true;
+  renderMealNutrition();
+  renderMealPhotoDraft();
+  const body = E.mealDialog.querySelector(".diary-editor-body");
+  E.mealDialog.showModal();
+  body.scrollTop = 0;
+  mealEditorKeyboard.open();
+  if (options.mode === "camera") E.mealCameraInput.click();
+  else if (options.mode === "text") E.mealNameInput.focus({ preventScroll: true });
+}
+
+function captureMealTime(now = new Date()) {
+  if (!mealDraft) return;
+  mealDraft.clock.capture(now);
+  E.mealTimeInput.value = mealDraft.clock.time;
+  if (!mealDraft.clock.manual) E.mealTimeHint.textContent = "已使用本次添加照片或文字的时间，可手动修改。";
+}
+
+function renderMealPhotoDraft() {
+  if (!mealDraft) return;
+  E.mealPhotoCount.textContent = `${mealDraft.photos.length} / ${MAX_MEAL_PHOTOS}`;
+  E.mealPhotoPreview.innerHTML = mealDraft.photos.map((photo, index) => `<figure><img src="${photo}" alt="食物照片 ${index + 1}" /><button type="button" data-remove-photo="${index}" aria-label="移除第 ${index + 1} 张照片">×</button></figure>`).join("");
+  E.mealPhotoPreview.hidden = !mealDraft.photos.length;
+  const busy = mealDraft.processing || mealDraft.analyzing || mealDraft.connecting || mealSaving;
+  E.mealCameraButton.disabled = E.mealPhotoButton.disabled = busy || mealDraft.photos.length >= MAX_MEAL_PHOTOS;
+  E.mealSaveButton.disabled = busy;
+  [E.mealNameInput, E.mealTimeInput].forEach(input => { input.disabled = mealSaving; });
+  E.mealAnalyzeButton.disabled = busy || !(mealDraft.photos.length || E.mealNameInput.value.trim());
+  E.mealAnalyzeLabel.textContent = mealDraft.analyzing ? "正在识别…" : mealDraft.nutrition ? "重新识别热量与营养" : "识别热量与营养";
+  for (const name of ["Kcal", "Carbs", "Protein", "Fat"]) E[`meal${name}Input`].disabled = busy || !mealDraft.nutrition;
+  E.mealNutritionClear.disabled = busy;
+  E.mealSaveButton.textContent = mealSaving ? "正在保存…" : mealDraft.processing ? "正在处理图片…" : mealDraft.id ? "保存修改" : "保存饮食记录";
+}
+
+async function handleMealPhotos(event) {
+  const files = [...(event.target.files || [])];
+  event.target.value = "";
+  if (!mealDraft || !files.length || mealSaving || mealDraft.processing) return;
+  const draft = mealDraft, version = mealSelectionVersion, addedAt = new Date();
+  invalidateMealNutrition();
+  const remaining = MAX_MEAL_PHOTOS - draft.photos.length;
+  draft.processing = true;
+  renderMealPhotoDraft();
+  E.mealPhotoMessage.textContent = "正在处理图片…";
+  const errors = [];
+  let added = 0;
+  for (const file of files.slice(0, remaining)) {
+    try {
+      const photo = await prepareMealPhoto(file);
+      if (version !== mealSelectionVersion || draft !== mealDraft) return;
+      draft.photos.push(photo);
+      added++;
+      captureMealTime(addedAt);
+    } catch (error) { errors.push(error.message); }
+  }
+  if (version !== mealSelectionVersion || draft !== mealDraft) return;
+  draft.processing = false;
+  renderMealPhotoDraft();
+  E.mealPhotoMessage.textContent = errors.length ? errors.join("；") : files.length > remaining ? "每餐最多 3 张照片，已添加前面的照片。" : `已添加 ${added} 张照片，可继续填写文字或直接保存。`;
+}
+
+async function handleMealSubmit(event) {
+  event.preventDefault();
+  if (!mealDraft || mealSaving || mealDraft.processing || mealDraft.analyzing || mealDraft.connecting || !E.mealForm.reportValidity()) return;
+  const draft = mealDraft;
+  const name = E.mealNameInput.value.trim();
+  if (!name && !draft.photos.length) { showToast("请添加食物照片或填写文字记录", false); return; }
+  captureMealTime();
+  const nutrition = readMealNutrition();
+  if (draft.nutrition && !nutrition) { showToast("请填写有效的热量和营养数值", false); return; }
+  const meal = { mealType: "meal", name, note: "", nutrition, photos: [...draft.photos],
+    logDate: draft.clock.dateKey, recordedAt: draft.clock.recordedAt };
+  mealSaving = true;
+  renderMealPhotoDraft();
+  try {
+    const saved = await storage.saveMealRecord(meal, draft.id);
+    if (selectedDate === meal.logDate) {
+      const index = mealRecords.findIndex(record => record.id === saved.id);
+      if (index < 0) mealRecords.push(saved); else mealRecords[index] = saved;
+      renderMeals();
+      updateDailyOverview();
+    }
+    E.mealDialog.close();
+    nativeHaptic("light");
+    showToast(draft.id ? "饮食记录已修改" : "饮食记录已保存", false);
+  } catch (e) { showToast(toFriendlyError(e), false); }
+  finally { mealSaving = false; renderMealPhotoDraft(); }
+}
+
+async function deleteMealRecord(id) {
+  const dateKey = selectedDate;
+  const index = mealRecords.findIndex(record => record.id === id);
+  if (index < 0) return;
+  const [record] = mealRecords.splice(index, 1);
+  renderMeals();
+  updateDailyOverview();
+  try {
+    await storage.deleteLog("meal", id);
+    showToast("饮食记录已删除", false);
+  } catch (e) {
+    if (selectedDate === dateKey) {
+      mealRecords.splice(index, 0, record);
+      renderMeals();
+      updateDailyOverview();
+    }
     showToast(toFriendlyError(e), false);
   }
+}
+
+function renderMeals() {
+  if (!E.mealDayList) return;
+  const today = toDateKey(new Date());
+  const rows = mealRecords.filter(record => record.logDate ? record.logDate === today : selectedDate === today)
+    .sort((a, b) => mealRecordDate(b) - mealRecordDate(a));
+  const totals = dailyMealNutrition(rows);
+  nutritionGoalsPage.render(totals, mealDayLoading);
+  [["mealDailyKcal", "kcal"], ["mealDailyCarbs", "carbsG"], ["mealDailyProtein", "proteinG"], ["mealDailyFat", "fatG"]].forEach(([id, key]) => {
+    E[id].textContent = mealDayLoading || totals[key] === null ? "—" : totals[key].toLocaleString("zh-CN", { maximumFractionDigits: 1 });
+  });
+  E.mealDailyCoverage.textContent = mealDayLoading ? "正在读取…" : !totals.entries ? "尚无记录" : `已计入 ${totals.counted} / ${totals.entries} 条`;
+  E.mealDailyNote.textContent = mealDayLoading ? "正在读取已保存的营养记录…" : !totals.entries ? "添加饮食并识别营养后，显示当天的摄入合计。"
+    : !totals.counted ? "目前记录尚无营养数据；可在编辑记录中 AI 识别。"
+    : totals.missing ? `还有 ${totals.missing} 条记录缺少营养数据，当前仅汇总已知数值。` : "按已保存的营养估算合计，可在每餐中调整。";
+  E.mealDayStatus.hidden = !mealDayLoading;
+  E.mealDayList.hidden = mealDayLoading;
+  E.mealEmptyState.hidden = mealDayLoading || rows.length > 0;
+  E.mealDayList.setAttribute("aria-busy", String(mealDayLoading));
+  [E.mealQuickAdd, E.mealQuickCamera, E.mealQuickText].forEach(button => { button.disabled = mealDayLoading; });
+  E.mealListCount.textContent = mealDayLoading ? "正在读取…" : `${rows.length} 条记录`;
+  E.mealDayList.innerHTML = rows.map(mealEntryHTML).join("");
+}
+
+const MEAL_NUTRITION_INPUTS = ["mealKcalInput", "mealCarbsInput", "mealProteinInput", "mealFatInput"];
+function renderMealNutrition() {
+  if (!mealDraft) return;
+  const nutrition = mealDraft.nutrition;
+  E.mealNutritionResult.hidden = !nutrition;
+  MEAL_NUTRITION_INPUTS.forEach((id, index) => {
+    E[id].value = nutrition ? nutrition[NUTRITION_FIELDS[index].key] : "";
+    E[id].required = Boolean(nutrition);
+    E[id].disabled = !nutrition;
+  });
+  E.mealNutritionAssumption.textContent = nutrition ? [nutrition.portion, nutrition.note].filter(Boolean).join("；") : "";
+  E.mealNutritionStatus.textContent = nutrition ? "已识别这一餐的总营养，可检查和修改后保存。" : "填写食物文字或添加图片，即可估算热量、碳水、蛋白质和脂肪。";
+}
+function readMealNutrition() {
+  if (!mealDraft?.nutrition) return null;
+  const value = { ...mealDraft.nutrition };
+  MEAL_NUTRITION_INPUTS.forEach((id, index) => { value[NUTRITION_FIELDS[index].key] = E[id].value.trim() ? Number(E[id].value) : null; });
+  return normalizeMealNutrition(value);
+}
+function invalidateMealNutrition() {
+  if (!mealDraft) return;
+  mealDraft.nutritionVersion++;
+  mealDraft.analysisController?.abort();
+  mealDraft.analysisController = null;
+  mealDraft.analyzing = false;
+  mealDraft.nutrition = null;
+  renderMealNutrition();
+  renderMealPhotoDraft();
+}
+async function handleMealAnalysis() {
+  if (!mealDraft || mealDraft.processing || mealDraft.analyzing || mealSaving) return;
+  const draft = mealDraft, version = draft.nutritionVersion, generation = storage.sync.generation;
+  const description = E.mealNameInput.value.trim();
+  if (!draft.photos.length && !description) return;
+  if (E.mealDialog.contains(document.activeElement)) document.activeElement.blur();
+  const controller = new AbortController();
+  draft.analysisController = controller;
+  draft.analyzing = true;
+  E.mealAIConnect.hidden = true;
+  E.mealNutritionStatus.textContent = "正在识别食物与份量，估算这一餐的营养…";
+  renderMealPhotoDraft();
+  const timeout = setTimeout(() => controller.abort(), 65000);
+  try {
+    const result = await analyzeMeal({ photos: [...draft.photos], description, foodReferences: foodCatalogPage.references() }, { user: currentUser, signal: controller.signal });
+    if (draft !== mealDraft || version !== draft.nutritionVersion || generation !== storage.sync.generation) return;
+    const currentDescription = E.mealNameInput.value.trim();
+    if (currentDescription !== description) throw new Error("食物说明已变化，请重新识别");
+    draft.nutrition = result.nutrition;
+    if (!E.mealNameInput.value.trim() && result.name) E.mealNameInput.value = result.name;
+    renderMealNutrition();
+  } catch (error) {
+    if (draft !== mealDraft || version !== draft.nutritionVersion) return;
+    E.mealNutritionStatus.textContent = error.name === "AbortError" ? "识别超时，请检查网络后重试；记录内容已保留。" : toFriendlyError(error);
+    if (["PLAN_AUTH_REQUIRED", "MEAL_LOGIN_REQUIRED"].includes(error.code)) {
+      E.mealAIConnect.hidden = false;
+      E.mealAIConnect.textContent = chatGPTPlan ? "连接 ChatGPT" : "登录 App";
+    }
+  } finally {
+    clearTimeout(timeout);
+    if (draft === mealDraft && version === draft.nutritionVersion) {
+      draft.analyzing = false;
+      draft.analysisController = null;
+      renderMealPhotoDraft();
+    }
+  }
+}
+
+// ========== 每日训练标记 ==========
+async function markWorkoutDay(activity) {
+  if (workoutDetail.activity === activity) return;
+  try {
+    workoutDetail = await storage.saveWorkoutMark(selectedDate, activity);
+    isWorkoutDay = workoutDetail.isWorkout;
+    workoutDaysCache[selectedDate] = isWorkoutDay;
+    updateWorkoutToggleUI();
+    renderWorkout();
+    renderItemList("medicine");
+    renderItemList("supplement");
+    updateDailyOverview();
+    nativeHaptic("success");
+    showToast(`今天已标记为${activity}`, false);
+  } catch (e) { showToast(toFriendlyError(e), false); }
+}
+
+function renderWorkout() {
+  if (!E.workoutPanel) return;
+  updateWorkoutToggleUI();
+  const rest = workoutDetail.activity === "休息日";
+  const marked = isWorkoutDay || rest;
+  E.workoutDateLabel.textContent = fromDateKey(selectedDate).toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+  E.workoutCurrentStatus.textContent = marked ? "已记录" : "未标记";
+  E.workoutCurrentStatus.dataset.marked = String(marked);
+  E.workoutPanel.querySelectorAll("[data-workout-preset]").forEach(button => {
+    const active = marked && workoutDetail.activity === button.dataset.workoutPreset;
+    button.setAttribute("aria-pressed", String(active));
+  });
 }
 
 // ========== 药物/补剂 通用 ==========
@@ -760,83 +1381,51 @@ function getCfg(type) {
   return { defs: DEFAULT_SUPPLEMENTS, userList: userSupplements, recs: supplementRecords, coll: "supplementLogs" };
 }
 function getFullList(type) {
-  const cfg = getCfg(type); const seen = new Set(); const list = [];
-  // userList 优先，确保用户编辑（剂量等）能覆盖默认配置
-  for (const s of [...cfg.userList, ...cfg.defs]) { if (!seen.has(s.name)) { seen.add(s.name); list.push(s); } }
-  return list;
+  return enabledPlans(type === "medicine" ? userMedicines : userSupplements);
 }
 function getCount(type, name) { const r = getCfg(type).recs.find(r => r.name === name); return r ? (r.count || 0) : 0; }
 
-async function incrementItem(type, name) {
-  const full = getFullList(type);
-  const item = full.find(s => s.name === name);
-  if (!item) return;
-  if (!isItemActiveToday(type, item)) {
-    showToast(`${name}: ${getSkipReason(type, item)}，无需服用`, false);
-    return;
-  }
+async function adjustIntake(type, name, delta) {
+  if (mealDayLoading) return;
+  const dateKey = selectedDate;
+  const key = `${type}:${dateKey}:${name}`;
+  if (intakeBusy.has(key)) return;
+  const item = getFullList(type).find(item => item.name === name);
+  if (!item || (delta > 0 && !isItemActiveToday(type, item))) return;
   const cfg = getCfg(type);
+  const index = cfg.recs.findIndex(record => record.name === name);
+  const previous = index < 0 ? null : cfg.recs[index];
+  const count = previous?.count || 0;
   const target = item.targetCount || 1;
-  const dosage = item.dosage || "1份/次";
-  const idx = cfg.recs.findIndex(r => r.name === name);
+  if ((delta > 0 && count >= target) || (delta < 0 && !count)) return;
+  const next = Math.max(0, count + delta);
   const now = new Date();
-  if (idx >= 0) {
-    const rec = cfg.recs[idx];
-    const newCount = rec.count >= target ? 0 : rec.count + 1;
-    try {
-      await storage.updateLogCount(type, rec.id, newCount, now);
-      cfg.recs[idx] = { ...rec, count: newCount, recordedAt: now };
-      renderItemList(type);
-      if (newCount === 0) showToast(`${name} 已归零`, false);
-      else if (newCount >= target) showToast(`${name} ✓ 已完成 ${newCount}/${target}`, false);
-      else showToast(`${name} ${newCount}/${target}`, false);
-    } catch (e) { showToast(toFriendlyError(e), false); }
-  } else {
-    try {
-      const rec = await storage.addLog(type, { name, dosage, count: 1, logDate: selectedDate, recordedAt: now });
-      cfg.recs.push({ id: rec.id, name, dosage, count: 1, logDate: selectedDate, recordedAt: now });
-      renderItemList(type);
-      showToast(`${name} 1/${target}`, false);
-    } catch (e) { showToast(toFriendlyError(e), false); }
+  intakeBusy.add(key);
+  renderItemList(type);
+  try {
+    if (previous) {
+      await storage.updateLogCount(type, previous.id, next, now);
+      if (selectedDate === dateKey) cfg.recs[index] = { ...previous, count: next, recordedAt: now };
+    } else {
+      const payload = { name, dosage: item.dosage || "1份/次", targetCount: target, count: next, logDate: dateKey, recordedAt: now };
+      const record = await storage.addLog(type, payload);
+      if (selectedDate === dateKey) cfg.recs.push({ ...payload, id: record.id });
+    }
+    if (appSettings.vibrationEnabled) nativeHaptic(next >= target ? "success" : "light");
+    showToast(delta < 0 ? `${name} 已减去一次` : `${name} 已记录 ${next}/${target} 次`, false);
+  } catch (error) { showToast(toFriendlyError(error), false); }
+  finally {
+    intakeBusy.delete(key);
+    if (selectedDate === dateKey) { renderItemList(type); updateDailyOverview(); }
   }
-}
-
-async function decrementItem(type, name) {
-  const cfg = getCfg(type);
-  const idx = cfg.recs.findIndex(r => r.name === name);
-  if (idx < 0) return;
-  const rec = cfg.recs[idx];
-  const newCount = Math.max(0, (rec.count || 0) - 1);
-  try {
-    await storage.updateLogCount(type, rec.id, newCount, new Date());
-    cfg.recs[idx] = { ...rec, count: newCount, recordedAt: new Date() };
-    renderItemList(type);
-    const target = (getFullList(type).find(s => s.name === name) || {}).targetCount || 1;
-    showToast(`${name} ${newCount}/${target}`, false);
-  } catch (e) { showToast(toFriendlyError(e), false); }
-}
-
-async function resetItemCount(type, name) {
-  const cfg = getCfg(type);
-  const idx = cfg.recs.findIndex(r => r.name === name);
-  if (idx < 0) return;
-  const rec = cfg.recs[idx];
-  try {
-    await storage.updateLogCount(type, rec.id, 0, new Date());
-    cfg.recs[idx] = { ...rec, count: 0, recordedAt: new Date() };
-    renderItemList(type); showToast(`${name} 已归零`, false);
-  } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
 function handleGridClick(event, type) {
-  const editIcon = event.target.closest(".card-edit-icon");
-  if (editIcon) { openEditDialog(type, editIcon.dataset.name); return; }
-  const minusBtn = event.target.closest(".count-minus");
-  if (minusBtn) { decrementItem(type, minusBtn.dataset.name); return; }
-  const resetBtn = event.target.closest(".count-reset");
-  if (resetBtn) { resetItemCount(type, resetBtn.dataset.name); return; }
-  const card = event.target.closest(".supplement-card");
-  if (card) { incrementItem(type, card.dataset.name); }
+  const button = event.target.closest("[data-intake-action]");
+  if (!button || button.disabled) return;
+  const { intakeAction, name } = button.dataset;
+  if (intakeAction === "edit") openEditDialog(type, name);
+  else void adjustIntake(type, name, intakeAction === "minus" ? -1 : 1);
 }
 
 function getDlg(type) {
@@ -859,12 +1448,14 @@ function openAddDialog(type) {
   d.dialog.querySelector(".primary-button").textContent = "添加" + d.label;
   const delBtn = type === "medicine" ? E.deleteMedicineBtn : E.deleteSupplementBtn;
   if (delBtn) delBtn.style.display = "none";
+  itemPlanReturn = E[`${type}PlanDialog`].open ? type : null;
+  if (itemPlanReturn) E[`${type}PlanDialog`].close();
   d.dialog.showModal();
   setTimeout(() => d.name.focus(), 50);
 }
 
 function openEditDialog(type, name) {
-  const full = getFullList(type);
+  const full = type === "medicine" ? userMedicines : userSupplements;
   const item = full.find(s => s.name === name);
   if (!item) return;
   currentEditItem = { type, name: item.name };
@@ -877,6 +1468,8 @@ function openEditDialog(type, name) {
   d.dialog.querySelector(".primary-button").textContent = "保存修改";
   const delBtn = type === "medicine" ? E.deleteMedicineBtn : E.deleteSupplementBtn;
   if (delBtn) delBtn.style.display = "";
+  itemPlanReturn = E[`${type}PlanDialog`].open ? type : null;
+  if (itemPlanReturn) E[`${type}PlanDialog`].close();
   d.dialog.showModal();
   setTimeout(() => d.name.select(), 50);
 }
@@ -886,78 +1479,56 @@ async function handleItemFormSubmit(event, type) {
   const d = getDlg(type);
   if (!d.dialog.querySelector("form").reportValidity()) return;
   const name = d.name.value.trim();
+  if (!name) { showToast("请填写名称", false); d.name.focus(); return; }
   const dosage = d.dosage.value.trim() || "1份/次";
   const targetCount = parseInt(d.target.value) || 1;
   const schedule = d.schedule.value || "everyday";
-  if (currentEditItem) await editItem(type, currentEditItem.name, name, dosage, targetCount, schedule);
-  else await addCustomItem(type, name, dosage, targetCount, schedule);
+  const saved = currentEditItem
+    ? await editItem(type, currentEditItem.name, name, dosage, targetCount, schedule)
+    : await addCustomItem(type, name, dosage, targetCount, schedule);
+  if (!saved) return;
   currentEditItem = null; d.dialog.close();
 }
 
 async function addCustomItem(type, name, dosage, targetCount, schedule) {
-  if (getFullList(type).some(s => s.name === name)) { showToast(`"${name}" 已存在`, false); return; }
   const arr = type === "medicine" ? userMedicines : userSupplements;
+  if (arr.some(s => s.name === name)) { showToast(`"${name}" 已存在`, false); return false; }
   const newList = [...arr, { name, dosage, targetCount, schedule, emoji: "💊" }];
   try {
-    await storage.saveItems(type, newList);
     if (type === "medicine") userMedicines = newList; else userSupplements = newList;
-    renderItemList(type);
+    refreshItemPlan(type);
+    void storage.saveItems(type, newList);
     showToast(`已添加${type === "medicine" ? "药物" : "补剂"} "${name}"`, false);
+    return true;
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
 async function editItem(type, oldName, newName, newDosage, newTarget, newSchedule) {
-  if (oldName !== newName && getFullList(type).some(s => s.name === newName)) { showToast(`"${newName}" 已存在`, false); return; }
   const arr = type === "medicine" ? userMedicines : userSupplements;
-  const defs = type === "medicine" ? DEFAULT_MEDICINES : DEFAULT_SUPPLEMENTS;
-  const isDef = defs.some(d => d.name === oldName);
-  let newList;
-  if (isDef) {
-    const origDef = defs.find(d => d.name === oldName);
-    const origEmoji = origDef ? origDef.emoji : (arr.find(s => s.name === oldName) || {}).emoji || "💊";
-    newList = [...arr.filter(s => s.name !== oldName), { name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule, emoji: origEmoji }];
-  } else {
-    newList = arr.map(s => s.name === oldName ? { ...s, name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule } : s);
-  }
+  if (oldName !== newName && arr.some(s => s.name === newName)) { showToast(`"${newName}" 已存在`, false); return false; }
+  const newList = arr.map(s => s.name === oldName ? { ...s, name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule } : s);
   try {
-    await storage.saveItems(type, newList);
     if (type === "medicine") userMedicines = newList; else userSupplements = newList;
-    renderItemList(type);
+    refreshItemPlan(type);
+    void storage.saveItems(type, newList);
     showToast(`已更新${type === "medicine" ? "药物" : "补剂"} "${newName}"`, false);
+    return true;
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
 async function deleteCustomItem(type, name) {
   const arr = type === "medicine" ? userMedicines : userSupplements;
   const label = type === "medicine" ? "药物" : "补剂";
-  const defs = type === "medicine" ? DEFAULT_MEDICINES : DEFAULT_SUPPLEMENTS;
-  const isDef = defs.some(d => d.name === name);
   const newList = arr.filter(s => s.name !== name);
   const dlg = type === "medicine" ? E.customMedicineDialog : E.customSupplementDialog;
   dlg.close();
   currentEditItem = null;
   try {
-    await storage.saveItems(type, newList);
     if (type === "medicine") userMedicines = newList; else userSupplements = newList;
-    renderItemList(type);
-    showToast(`已删除${label} "${name}"`, true);
+    refreshItemPlan(type);
+    void storage.saveItems(type, newList);
+    showToast(`已删除${label}计划 "${name}"，历史记录保留`, false);
   } catch (e) { showToast(toFriendlyError(e), false); }
-}
-
-async function deleteItemRecord(type, id) {
-  const cfg = getCfg(type);
-  const idx = cfg.recs.findIndex(r => r.id === id);
-  if (idx < 0) return;
-  const [rec] = cfg.recs.splice(idx, 1); renderItemList(type);
-  lastDeleted = { record: rec, index: idx, type };
-  showToast(`已删除 ${rec.name} 记录`, true);
-  try {
-    await storage.deleteLog(type, id);
-  } catch (e) {
-    cfg.recs.splice(idx, 0, rec); renderItemList(type);
-    lastDeleted = null;
-    showToast(toFriendlyError(e), false);
-  }
 }
 
 // ========== 饮水渲染 ==========
@@ -970,19 +1541,161 @@ function render() {
   E.waterFill.setAttribute("y", 190 - capped * 1.9);
   E.waterWave.setAttribute("transform", `translate(0 ${190 - capped * 1.9})`);
   E.progressMessage.textContent = getProgressMessage(total, dailyGoal);
-  renderDate(); renderHistory(); renderToiletHistory();
+  renderHistory(); renderToiletHistory(); updateDailyOverview();
 }
 
-function renderDate() {
-  const sel = fromDateKey(selectedDate);
-  const today = toDateKey(new Date());
-  const yst = new Date(); yst.setDate(yst.getDate() - 1);
-  if (selectedDate === today) E.dateLabel.textContent = "今天";
-  else if (selectedDate === toDateKey(yst)) E.dateLabel.textContent = "昨天";
-  else E.dateLabel.textContent = sel.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
-  E.fullDate.textContent = sel.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
-  E.nextDay.disabled = selectedDate >= today;
-  E.datePicker.max = today;
+function updateDailyOverview() {
+  const progressFor = (type) => {
+    const items = getFullList(type).filter(item => isItemActiveToday(type, item));
+    const completed = items.filter(item => getCount(type, item.name) >= (item.targetCount || 1)).length;
+    return `${completed}/${items.length}`;
+  };
+  if (E.overviewMedicineValue) E.overviewMedicineValue.textContent = progressFor("medicine");
+  if (E.overviewSupplementValue) E.overviewSupplementValue.textContent = progressFor("supplement");
+  if (E.overviewToiletValue) E.overviewToiletValue.textContent = `${toiletRecords.length} 次`;
+  if (E.overviewMealValue) {
+    E.overviewMealValue.textContent = `${mealRecords.length} 条`;
+  }
+  if (E.overviewWorkoutValue) E.overviewWorkoutValue.textContent = workoutDetail.activity || (isWorkoutDay ? "训练日" : "未标记");
+  if (E.dashboardPanel && !E.dashboardPanel.hidden) renderDashboard();
+}
+
+function getPlanProgress(type) {
+  const items = getFullList(type).filter(item => isItemActiveToday(type, item));
+  const completed = items.filter(item => getCount(type, item.name) >= (item.targetCount || 1)).length;
+  return { completed, total: items.length };
+}
+
+function renderDashboard() {
+  if (!E.dashboardPanel) return;
+  const waterTotal = records.reduce((sum, record) => sum + Number(record.amount || 0), 0);
+  const waterPercent = dailyGoal > 0 ? Math.min(100, Math.round((waterTotal / dailyGoal) * 100)) : 0;
+  const medicine = getPlanProgress("medicine");
+  const supplement = getPlanProgress("supplement");
+  E.dashboardWaterValue.textContent = `${waterTotal} ml`;
+  E.dashboardWaterSub.textContent = `目标 ${dailyGoal} ml`;
+  E.dashboardWaterRing.textContent = `${waterPercent}%`;
+  E.dashboardWaterRing.style.setProperty("--progress", `${waterPercent * 3.6}deg`);
+  const quickCup = userCups[0] || DEFAULT_CUPS[0];
+  E.dashboardQuickWater.textContent = `＋ ${quickCup.amount} ml`;
+  E.dashboardQuickWater.setAttribute("aria-label", `记录${quickCup.name} ${quickCup.amount} ml`);
+  const nutrition = dailyMealNutrition(mealRecords, selectedDate);
+  [["dashboardMealValue", "kcal"], ["dashboardMealProtein", "proteinG"], ["dashboardMealCarbs", "carbsG"], ["dashboardMealFat", "fatG"]].forEach(([id, key]) => {
+    E[id].textContent = mealDayLoading || nutrition[key] === null ? "—" : nutrition[key].toLocaleString("zh-CN", { maximumFractionDigits: 1 });
+  });
+  E.dashboardMealCoverage.textContent = nutrition.missing && nutrition.counted ? "已知摄入" : "摄入合计";
+  E.dashboardWorkoutValue.textContent = workoutDetail.activity || (isWorkoutDay ? "训练日" : "未标记");
+  [["Medicine", medicine], ["Supplement", supplement]].forEach(([key, progress]) => {
+    const complete = progress.total > 0 && progress.completed >= progress.total;
+    E[`dashboard${key}Value`].textContent = progress.total ? `${progress.completed} / ${progress.total}` : "—";
+    E[`dashboard${key}Unit`].textContent = progress.total ? "项已完成" : "无计划";
+    E[`dashboard${key}Sub`].textContent = !progress.total ? "今日暂无服用计划"
+      : complete ? "今日计划已完成" : "";
+    E[`dashboard${key}Sub`].hidden = progress.total > 0 && !complete;
+    document.querySelector(`.summary-plan[data-detail="${key.toLowerCase()}"]`).dataset.complete = String(complete);
+  });
+  E.dashboardToiletValue.textContent = `${toiletRecords.length} 次`;
+  const smallCount = toiletRecords.filter(record => record.type === "small").length;
+  const bigCount = toiletRecords.filter(record => record.type === "big").length;
+  E.dashboardToiletSub.textContent = toiletRecords.length ? `小号 ${smallCount} · 大号 ${bigCount}` : "身体状态记录";
+}
+
+function renderAccountPage() {
+  if (!E.accountAvatar) return;
+  bodyMeasurementsPage.render();
+  nutritionGoalsPage.render();
+  foodCatalogPage.render();
+  E.accountAvatar.innerHTML = avatarType === "custom" && avatarUrl
+    ? `<img src="${esc(avatarUrl)}" alt="">`
+    : genAvatarSVG(avatarColor, 72);
+  E.accountGoalValue.innerHTML = `${Number(dailyGoal).toLocaleString("en-US")} <small>ml</small>`;
+  const medicines = enabledPlans(userMedicines);
+  E.accountMedicineValue.textContent = medicines.length ? `${medicines.length} 项已启用 · 剂量与服用频率` : "添加与管理服用计划";
+  const planned = enabledSupplements(userSupplements);
+  E.accountSupplementValue.textContent = planned.length ? `${planned.length} 项已启用 · 剂量与服用频率` : "添加与管理补剂计划";
+  const remindersEnabled = !!reminderSettings?.enabled;
+  E.accountReminderValue.textContent = remindersEnabled ? "已开启" : "未开启";
+  E.accountReminderButton.classList.toggle("is-enabled", remindersEnabled);
+  const reminderTimes = [...new Set(reminderSettings?.times || [])].sort();
+  E.accountReminderDetail.textContent = remindersEnabled
+    ? (reminderTimes.length ? `每天 ${reminderTimes.length} 次 · ${reminderTimes[0]} 起` : "尚未设置提醒时间")
+    : "设置每日提醒时间";
+  E.accountCupValue.textContent = userCups.length ? `${userCups.length} 个常用杯型` : "添加常用杯型与容量";
+  E.accountSettingsValue.textContent = `${currentTheme().name} · 外观、声音与触感`;
+  renderSyncStatus();
+}
+
+function renderItemPlan(type) {
+  const items = type === "medicine" ? userMedicines : userSupplements;
+  const label = type === "medicine" ? "药物" : "补剂";
+  const active = enabledPlans(items).length;
+  E[`${type}PlanSummary`].textContent = `已启用 ${active} / ${items.length} 项 · 修改自动保存`;
+  E[`${type}PlanList`].innerHTML = items.length ? items.map(item => `
+    <div class="supplement-plan-row${item.enabled === false ? " is-disabled" : ""}">
+      <button class="plan-item-edit" type="button" data-plan-edit="${esc(item.name)}" aria-label="编辑 ${esc(item.name)}"><span class="plan-item-symbol" aria-hidden="true">${esc(item.emoji || "💊")}</span><span><strong>${esc(item.name)}</strong><small>${esc(item.dosage || "1份/次")} · ${item.targetCount || 1} 次/日</small><small>${SCHEDULE_LABELS[item.schedule] || "每天"}${item.enabled === false ? " · 已停用" : ""}</small></span><span class="plan-item-arrow" aria-hidden="true">›</span></button>
+      <label class="plan-switch"><input type="checkbox" role="switch" aria-label="启用 ${esc(item.name)}" data-plan-toggle="${esc(item.name)}" ${item.enabled !== false ? "checked" : ""}><span aria-hidden="true"></span></label>
+    </div>`).join("") : `<p class="plan-empty">还没有${label}计划，点击下方添加。已有服用记录仍保留在历史中。</p>`;
+}
+
+function refreshItemPlan(type) {
+  renderItemPlan(type);
+  renderItemList(type);
+  renderAccountPage();
+  updateDailyOverview();
+}
+
+function renderSyncStatus() {
+  if (!E.accountSyncState) return;
+  const { state, lastSyncedAt, failures, hasPendingWrites } = storage.syncStatus;
+  const failedLabels = [...new Set(failures.map(failure => failure.label))].join("、");
+  const hasWriteFailure = hasPendingWrites || failures.some(failure => failure.kind === "write");
+  const permissionFailure = failures.some(failure => failure.code.endsWith("permission-denied"));
+  const authFailure = failures.some(failure => failure.code.endsWith("unauthenticated"));
+  const timedOut = failures.some(failure => failure.code.endsWith("deadline-exceeded"));
+  const reason = permissionFailure ? "暂时无法访问云端记录" : authFailure ? "登录已失效，请重新登录" : timedOut ? "云端连接超时，可稍后重试" : "暂时无法连接云端，可稍后重试";
+  const labels = {
+    local: ["本机保存", "登录后可跨设备同步"],
+    ready: ["等待同步", "云端账户已连接"],
+    syncing: ["同步中", "正在同步记录，你可以继续使用"],
+    pending: ["待同步", "记录已保存在本机，可点击重试继续上传"],
+    synced: ["已同步", lastSyncedAt ? `最近同步 ${lastSyncedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "记录已同步"],
+    offline: ["离线", "网络恢复后，云端请求将继续处理"],
+    error: [hasWriteFailure ? "部分未同步" : "读取未完成", `${failedLabels}：${reason}。本地记录仍保留。`],
+  };
+  const [label, detail] = labels[state === "local" && bootUser ? "ready" : state];
+  E.accountSyncState.textContent = label;
+  E.accountSyncState.dataset.state = state;
+  E.accountSyncDetail.textContent = detail;
+  E.accountSyncRetry.hidden = !failures.length && state !== "pending";
+  E.accountSyncRetry.disabled = state === "syncing" || state === "offline" || syncRetryInProgress;
+}
+
+async function retryCloudSync() {
+  if (syncRetryInProgress || !storage.isCloud || !navigator.onLine) return;
+  syncRetryInProgress = true;
+  renderSyncStatus();
+  try {
+    await Promise.allSettled([
+      storage.retryFailedRequests(),
+      loadProfile(), loadDay(),
+    ]);
+    if (!E.timelinePanel.hidden) await loadHistoryPage();
+  } catch { /* Failures stay visible in 我的; no sync popups. */ }
+  finally {
+    syncRetryInProgress = false;
+    renderSyncStatus();
+  }
+}
+E.accountSyncRetry?.addEventListener("click", retryCloudSync);
+window.addEventListener("storage-sync-change", renderSyncStatus);
+window.addEventListener("online", () => {
+  renderSyncStatus();
+  if (storage.isCloud) void retryCloudSync();
+});
+window.addEventListener("offline", renderSyncStatus);
+
+async function loadHistoryPage() {
+  return historyPage.load();
 }
 
 function renderHistory() {
@@ -1000,9 +1713,12 @@ function renderHistory() {
 
 // ========== 厕所渲染 ==========
 function renderToiletHistory() {
+  E.toiletBigCount.textContent = String(toiletRecords.filter(record => record.type === "big").length);
+  E.toiletSmallCount.textContent = String(toiletRecords.filter(record => record.type === "small").length);
   E.toiletRecordCount.textContent = `${toiletRecords.length} 条`;
+  updateDailyOverview();
   if (toiletRecords.length === 0) {
-    E.toiletHistoryList.innerHTML = '<div class="empty-state">这一天还没有厕所记录，点击上方按钮记录吧。</div>';
+    E.toiletHistoryList.innerHTML = '<div class="empty-state"><strong>还没有如厕记录</strong><p>点击上方卡片，记录一次。</p></div>';
     return;
   }
   E.toiletHistoryList.innerHTML = [...toiletRecords].reverse().map(r => {
@@ -1020,61 +1736,31 @@ function renderToiletHistory() {
 
 // ========== 药物/补剂渲染 ==========
 function renderItemList(type) {
-  const isMed = type === "medicine";
+  const isMed = type === "medicine", label = isMed ? "药物" : "补剂";
+  const panel = E[`${type}Panel`];
   const fullList = getFullList(type);
-  const activeList = fullList.filter(s => isItemActiveToday(type, s));
-  const skipList = fullList.filter(s => !isItemActiveToday(type, s));
-  let takenCount = 0;
-  for (const s of activeList) {
-    if (getCount(type, s.name) >= (s.targetCount || 1)) takenCount++;
-  }
-  const totalCount = activeList.length;
-  const percent = totalCount > 0 ? Math.round((takenCount / totalCount) * 100) : 0;
-
-  (isMed ? E.medicineTakenCount : E.supplementTakenCount).textContent = takenCount;
-  (isMed ? E.medicineTotalCount : E.supplementTotalCount).textContent = totalCount;
-  (isMed ? E.medicinePercent : E.supplementPercent).textContent = `${percent}%`;
-
-  const workoutRow = isMed ? document.querySelector("#medicineWorkoutRow") : document.querySelector("#supplementWorkoutRow");
-  const hasWorkoutItems = fullList.some(s => {
-    const sch = s.schedule || "everyday";
-    return sch === "workout" || sch === "workout_weekday";
-  });
-  if (workoutRow) workoutRow.style.display = hasWorkoutItems ? "" : "none";
-
-  const grid = isMed ? E.medicineGrid : E.supplementGrid;
-  const allCards = [...activeList, ...skipList];
-  grid.innerHTML = allCards.map(item => {
-    const active = isItemActiveToday(type, item);
-    const reason = active ? "" : getSkipReason(type, item);
-    const count = getCount(type, item.name);
-    const target = item.targetCount || 1;
-    const done = count >= target && active;
-    const clsBase = isMed ? "supplement-card medicine-card" : "supplement-card";
-    const cls = `${clsBase} ${done ? "taken" : ""} ${!active ? "skipped" : ""}`;
-    let dots = "";
-    for (let i = 1; i <= target; i++) dots += `<span class="count-dot ${i <= count ? "filled" : ""}">${i <= count ? "●" : "○"}</span>`;
-    const skipBadge = reason ? `<span class="skip-badge">${reason}</span>` : "";
-    return `
-      <div class="${cls}" data-name="${esc(item.name)}">
-        <span class="card-edit-icon" data-action="edit" data-name="${esc(item.name)}" title="编辑">⚙</span>
-        <span class="supplement-emoji">${item.emoji || "💊"}</span>
-        <span class="supplement-name">${esc(item.name)}</span>
-        <span class="supplement-dosage">${esc(item.dosage || "")} · ${active ? count + "/" + target : "—"}</span>
-        ${active ? `<span class="count-dots">${dots}</span>` : skipBadge}
-        ${active ? `
-        <span class="count-actions">
-          <span class="count-minus" data-name="${esc(item.name)}" title="减一次">−</span>
-          <span class="count-reset" data-name="${esc(item.name)}" title="归零" style="${count > 0 ? '' : 'visibility:hidden'}">↺</span>
-        </span>` : ""}
-      </div>`;
-  }).join("");
-
-  const hint = isMed ? E.medicineHint : E.supplementHint;
-  hint.textContent = `点击卡片 +1 · 灰色=今日跳过`;
-
-  const label = isMed ? "药物" : "补剂";
-  renderItemHistoryHTML(type, isMed, fullList, label);
+  const items = fullList.map(item => ({ ...item, target: item.targetCount || 1, count: mealDayLoading ? 0 : getCount(type, item.name), active: isItemActiveToday(type, item), reason: getSkipReason(type, item) }));
+  const summary = intakeSummary(items);
+  E[`${type}Percent`].textContent = `${summary.percent}%`;
+  const progress = panel.querySelector(`#${type}Ring`);
+  progress.style.setProperty("--intake-progress", `${summary.percent}%`);
+  progress.setAttribute("aria-valuenow", String(summary.percent));
+  progress.setAttribute("aria-valuetext", mealDayLoading ? "正在读取服用进度" : `${summary.percent}%`);
+  progress.setAttribute("aria-busy", String(mealDayLoading));
+  const workoutRow = panel.querySelector(`#${type}WorkoutRow`);
+  if (workoutRow) workoutRow.hidden = !fullList.some(item => ["workout", "workout_weekday"].includes(item.schedule));
+  const workoutToggle = E[`${type}WorkoutToggle`];
+  if (workoutToggle) workoutToggle.disabled = mealDayLoading || intakeBusy.size > 0;
+  const pending = items.filter(item => item.active && item.count < item.target);
+  const done = items.filter(item => item.active && item.count >= item.target);
+  const skipped = items.filter(item => !item.active);
+  const visible = [...pending, ...done, ...skipped];
+  const grid = E[`${type}Grid`];
+  grid.setAttribute("aria-busy", String(mealDayLoading));
+  grid.innerHTML = mealDayLoading ? '<div class="intake-empty">正在读取服用记录…</div>' : visible.length ? visible.map(item => intakeCard(item, type, intakeBusy.has(`${type}:${selectedDate}:${item.name}`))).join("") : `<div class="intake-empty"><span class="intake-empty-symbol">${intakeIcon(type)}</span><strong>还没有启用的${label}计划</strong><p>可在“我的”中设置服用计划。</p></div>`;
+  E[`${type}Hint`].textContent = isMed ? "按你的用药计划服用；每次服用后记录，误记可减去一次。" : "每次服用后记录，误记可减去一次。";
+  const overview = isMed ? E.overviewMedicineValue : E.overviewSupplementValue;
+  if (overview) overview.textContent = `${summary.done}/${summary.total}`;
 }
 
 // ========== 药物/补剂渲染辅助 ==========
@@ -1084,35 +1770,6 @@ function toJSDate(v) {
   if (v?.toDate) return v.toDate();       // Firestore Timestamp
   if (v instanceof Date) return v;         // 已是 Date
   return new Date(v);                      // ISO 字符串
-}
-
-function renderItemHistoryHTML(type, isMed, fullList, label) {
-  const recs = isMed ? medicineRecords : supplementRecords;
-  const countEl = isMed ? E.medicineRecordCount : E.supplementRecordCount;
-  const listEl = isMed ? E.medicineHistoryList : E.supplementHistoryList;
-  const coll = isMed ? "medicineLogs" : "supplementLogs";
-  countEl.textContent = `${recs.length} 条`;
-  if (recs.length === 0) {
-    listEl.innerHTML = `<div class="empty-state">这一天还没有${label}记录，点击上方卡片开始记录吧。</div>`;
-    return;
-  }
-  listEl.innerHTML = [...recs].reverse().map(r => {
-    const tv = toTimeValue(r.recordedAt);
-    const td = toTimeDisplay(tv);
-    const item = fullList.find(s => s.name === r.name);
-    const target = item?.targetCount || 1;
-    const cnt = r.count || 0;
-    const done = cnt >= target;
-    const icon = done ? "✓" : (cnt > 0 ? "◐" : "✗");
-    const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
-    const txt = done ? `已完成 ${cnt}/${target}` : (cnt > 0 ? `部分 ${cnt}/${target}` : "未服用");
-    return `<article class="history-item supplement-history-item">
-      <span class="history-dot supplement-dot ${cls}">${icon}</span>
-      <div class="history-info"><strong>${esc(r.name)}</strong><span>${esc(r.dosage || "")} · <span class="time-editable" data-id="${r.id}" data-coll="${coll}" data-time="${tv}" title="点击修改时间">${td}</span></span></div>
-      <strong class="history-amount supplement-status ${cls}">${txt}</strong>
-      <button class="delete-record" type="button" data-id="${r.id}" aria-label="删除">×</button>
-    </article>`;
-  }).join("");
 }
 
 function renderDayDetailItemHTML(type, recs) {
@@ -1134,8 +1791,8 @@ function renderDayDetailItemHTML(type, recs) {
       return `<div class="detail-item"><span class="detail-dot">${icon}</span><span class="detail-name">${label}</span><span class="detail-time">${td}</span></div>`;
     }
     const cnt = r.count || 0;
-    const item = fullList.find(s => s.name === r.name);
-    const target = item?.targetCount || 1;
+    const item = getCfg(type).userList.find(s => s.name === r.name);
+    const target = r.targetCount || item?.targetCount;
     const done = cnt >= target;
     const cls = done ? "taken" : (cnt > 0 ? "partial" : "missed");
     const txt = done ? `✓ ${cnt}/${target}` : (cnt > 0 ? `${cnt}/${target}` : "未服");
@@ -1154,29 +1811,15 @@ function toiletItems(toiletRecs) {
 }
 
 // ========== 历史记录弹窗 ==========
-async function loadHistory(more = false) {
-  if (!more) {
-    historyOffset = 0;
-    historyDayData = [];
-    E.historyContent.innerHTML = '<div class="empty-state">正在加载历史记录...</div>';
-  }
+async function loadHistory() {
+  historyDayData = [];
+  E.historyContent.innerHTML = '<div class="empty-state">正在加载全部历史记录...</div>';
   try {
-    const dates = [];
-    for (let i = historyOffset; i < historyOffset + HISTORY_PAGE_SIZE; i++) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      dates.push(toDateKey(d));
-    }
-    historyOffset += HISTORY_PAGE_SIZE;
-    const dayData = await storage.getHistory(dates);
-    if (more) {
-      historyDayData = [...historyDayData, ...dayData];
-    } else {
-      historyDayData = dayData;
-    }
+    const dayData = await storage.getAllHistory();
+    historyDayData = dayData;
     historyViewMode = "overview";
 
     const now = new Date();
-    const offset = more ? historyDayData.length - dayData.length : 0;
     const html = dayData.map((day, i) => {
       const d = fromDateKey(day.dateKey);
       const isToday = day.dateKey === toDateKey(now);
@@ -1186,7 +1829,7 @@ async function loadHistory(more = false) {
       if (isToday) dateLabel = "今天";
       else if (isYesterday) dateLabel = "昨天";
       else dateLabel = d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
-      const fullDate = d.toLocaleDateString("zh-CN", { weekday: "short", month: "short", day: "numeric" });
+      const fullDate = d.toLocaleDateString("zh-CN", { year: "numeric", weekday: "short", month: "short", day: "numeric" });
       const isWkdy = d.getDay() >= 1 && d.getDay() <= 5;
 
       const waterPct = dailyGoal > 0 ? Math.min(Math.round((day.waterTotal / dailyGoal) * 100), 100) : 0;
@@ -1216,33 +1859,21 @@ async function loadHistory(more = false) {
         return `<span class="hist-dot red" title="${item.name}: 未服">✗</span>`;
       }).join("");
 
-      const idx = offset + i;
+      const idx = i;
       return `<div class="hist-row" data-day-index="${idx}" title="点击查看详情">
         <div class="hist-date"><strong>${dateLabel}</strong><span>${fullDate}${day.isWorkout ? " 🏋️" : ""}</span></div>
         <div class="hist-col"><span class="hist-label">💧</span><span class="hist-val">${day.waterTotal}ml</span>${waterBar}<span class="hist-pct">${waterPct}%</span></div>
         <div class="hist-col"><span class="hist-label">💚</span>${medItems || '<span class="hist-empty">—</span>'}</div>
         <div class="hist-col"><span class="hist-label">💊</span>${suppItems || '<span class="hist-empty">—</span>'}</div>
         <div class="hist-col"><span class="hist-label">🧻</span>${toiletItems(day.toiletRecs) || '<span class="hist-empty">—</span>'}</div>
+        <div class="hist-col hist-journal"><span class="hist-label">餐</span><span class="hist-val">${day.mealRecs?.length || 0} 份</span></div>
+        <div class="hist-col hist-journal"><span class="hist-label">练</span><span class="hist-val">${day.isWorkout ? esc(day.workoutDetail?.activity || "已训练") : "休息"}</span></div>
       </div>`;
     }).join("");
 
-    const loadMoreBtn = dayData.length >= HISTORY_PAGE_SIZE
-      ? '<div class="hist-load-more"><button class="text-button" id="histLoadMoreBtn" type="button">加载更多...</button></div>'
-      : '<div class="hist-end">已加载全部记录</div>';
-
-    if (more) {
-      // 移除旧按钮，追加新数据+新按钮
-      const oldBtn = E.historyContent.querySelector(".hist-load-more");
-      const oldEnd = E.historyContent.querySelector(".hist-end");
-      if (oldBtn) oldBtn.remove();
-      if (oldEnd) oldEnd.remove();
-      E.historyContent.insertAdjacentHTML("beforeend", html + loadMoreBtn);
-    } else {
-      E.historyContent.innerHTML = html + loadMoreBtn;
-    }
-    // 绑定加载更多按钮
-    const btn = E.historyContent.querySelector("#histLoadMoreBtn");
-    if (btn) btn.addEventListener("click", () => loadHistory(true));
+    E.historyContent.innerHTML = dayData.length
+      ? html + '<div class="hist-end">已显示全部记录</div>'
+      : '<div class="empty-state">还没有历史记录</div>';
   } catch (e) {
     E.historyContent.innerHTML = `<div class="empty-state">加载失败：${toFriendlyError(e)}</div>`;
   }
@@ -1252,43 +1883,7 @@ async function loadHistory(more = false) {
 function renderDayDetail(day) {
   if (!day) return;
   historyViewMode = "detail";
-  const d = fromDateKey(day.dateKey);
-  let dateLabel;
-  const now = new Date();
-  if (day.dateKey === toDateKey(now)) dateLabel = "今天";
-  else {
-    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-    if (day.dateKey === toDateKey(yesterday)) dateLabel = "昨天";
-    else dateLabel = d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
-  }
-  const fullDate = d.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
-
-  let waterItems = day.waterRecs?.length > 0
-    ? [...day.waterRecs].sort((a, b) => toJSDate(b.recordedAt) - toJSDate(a.recordedAt)).map(r => {
-        const t = toJSDate(r.recordedAt);
-        const td = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-        return `<div class="detail-item"><span class="detail-dot">◒</span><span class="detail-name">${esc(r.source || "饮水")}</span><span class="detail-time">${td}</span><strong class="detail-val">+${r.amount} ml</strong></div>`;
-      }).join("")
-    : '<div class="detail-empty">这一天没有饮水记录</div>';
-
-  const medHtml = renderDayDetailItemHTML("medicine", day.medRecs);
-  let medItems = medHtml || '<div class="detail-empty">这一天没有药物记录</div>';
-
-  const suppHtml = renderDayDetailItemHTML("supplement", day.suppRecs);
-  let suppItems = suppHtml || '<div class="detail-empty">这一天没有补剂记录</div>';
-
-  const toiletHtml = renderDayDetailItemHTML("toilet", day.toiletRecs);
-  let toiletItemsHtml = toiletHtml || '<div class="detail-empty">这一天没有厕所记录</div>';
-
-  E.historyContent.innerHTML = `
-    <div class="detail-header">
-      <button class="history-back-btn text-button" type="button">← 返回历史列表</button>
-      <div><strong class="detail-date-label">${dateLabel}</strong><span class="detail-full-date">${fullDate}${day.isWorkout ? " 🏋️ 健身日" : ""}</span></div>
-    </div>
-    <div class="detail-section"><h3>💧 饮水记录</h3><div class="detail-water-total">当日饮水：<strong>${day.waterTotal} ml</strong></div>${waterItems}</div>
-    <div class="detail-section"><h3>💚 药物记录</h3>${medItems}</div>
-    <div class="detail-section"><h3>💊 补剂记录</h3>${suppItems}</div>
-    <div class="detail-section"><h3>🧻 厕所记录</h3>${toiletItemsHtml}</div>`;
+  E.historyContent.innerHTML = historyDetailHTML(day);
 }
 
 // ========== 返回按钮辅助 ==========
@@ -1311,33 +1906,47 @@ function addBackButton(dialog, targetFn) {
 }
 
 // ========== 工具 ==========
-async function changeDay(offset) {
-  const d = fromDateKey(selectedDate); d.setDate(d.getDate() + offset);
-  const nk = toDateKey(d); if (nk > toDateKey(new Date())) return;
-  selectedDate = nk; await loadDay();
-}
-
 function showToast(m, undo) {
   clearTimeout(toastTimer); E.toastText.textContent = m;
-  E.undoButton.hidden = !undo; E.toast.classList.add("show");
-  toastTimer = setTimeout(hideToast, undo ? 5000 : 2600);
+  if (!undo) lastRecordAction = null;
+  const canUndo = Boolean(undo && lastRecordAction);
+  E.undoButton.hidden = !canUndo; E.toast.classList.add("show");
+  // Leave a brief opportunity to undo; longer messages get enough reading time.
+  const duration = Math.min(5000, Math.max(canUndo ? 3000 : 1800, m.length * 100));
+  toastTimer = setTimeout(hideToast, duration);
 }
 
-function hideToast() { E.toast.classList.remove("show"); }
+function hideToast() {
+  clearTimeout(toastTimer);
+  lastRecordAction = null;
+  E.undoButton.hidden = true;
+  E.toast.classList.remove("show");
+}
 
-function exportData() {
+async function exportData() {
   try {
     const raw = localStorage.getItem("health_tracker_data");
     const data = raw ? JSON.parse(raw) : { records: {}, profile: {}, workoutDays: {} };
+    for (const day of Object.values(data.records || {})) {
+      for (const record of day.meal || []) record.photos = await storage.readMealPhotos(record);
+    }
     const json = JSON.stringify(data, null, 2);
+    const filename = `健康追踪_数据备份_${toDateKey(new Date())}.json`;
+    const shareResult = await shareDataBackup(json, filename);
+    if (shareResult === "cancelled") return;
+    if (shareResult === "completed") {
+      showToast("数据已导出", false);
+      E.profileDialog.close();
+      return;
+    }
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `健康追踪_数据备份_${toDateKey(new Date())}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    showToast("数据已导出", false);
+    showToast("已发起下载，请确认文件已保存", false);
     E.profileDialog.close();
   } catch (e) {
     showToast("导出失败", false);
@@ -1369,12 +1978,24 @@ function updatePageLanguage() {
   // 更新各区域标题
   const tabLabels = {
     water: t("waterTab", lang),
+    toilet: lang === "zh" ? "如厕记录" : "Restroom Log",
+    meal: lang === "zh" ? "饮食日记" : "Food Diary",
+    workout: lang === "zh" ? "训练日志" : "Training Log",
     medicine: t("medicineTab", lang),
     supplement: t("supplementTab", lang),
   };
-  const activeTab = E.waterPanel.hidden ? (E.medicinePanel.hidden ? "supplement" : "medicine") : "water";
   const topbarH1 = document.querySelector(".topbar h1");
-  if (topbarH1) topbarH1.textContent = tabLabels[activeTab];
+  const section = document.body.dataset.section;
+  if (topbarH1) {
+    if (section === "assistant") topbarH1.textContent = lang === "zh" ? "健康助手" : "Health Assistant";
+    else if (section === "history") topbarH1.textContent = lang === "zh" ? "历史" : "History";
+    else if (section === "account") topbarH1.textContent = lang === "zh" ? "我的" : "Me";
+    else if (section === "overview") topbarH1.textContent = lang === "zh" ? "今日健康" : "Today";
+    else {
+      const activeDetail = ["water", "toilet", "meal", "workout", "medicine", "supplement"].find(id => !E[`${id}Panel`]?.hidden) || "water";
+      topbarH1.textContent = tabLabels[activeDetail];
+    }
+  }
 }
 
 // ========== 水杯管理 ==========
@@ -1438,7 +2059,7 @@ function deleteCup(idx) {
   storage.saveCups(userCups);
   renderCups();
   openCupEditor();
-  showToast(`已删除 "${cup.name}"`, true);
+  showToast(`已删除 "${cup.name}"`, false);
 }
 
 // ========== 智能推荐 ==========
@@ -1497,7 +2118,14 @@ async function saveReminderSettings() {
   if (E.profileReminderStatus) {
     E.profileReminderStatus.textContent = reminderSettings.enabled ? (getLang() === "zh" ? "已开启" : "On") : (getLang() === "zh" ? "已关闭" : "Off");
   }
+  renderAccountPage();
   if (reminderSettings.enabled) {
+    const nativeResult = await syncNativeReminders(reminderSettings);
+    if (nativeResult.native) {
+      if (!nativeResult.granted) showToast(t("remindPermission"), false);
+      else showToast(t("remindersSaved"), false);
+      return;
+    }
     if (Notification.permission === "default") {
       const result = await Notification.requestPermission();
       if (result !== "granted") showToast(t("remindPermission"), false);
@@ -1505,6 +2133,7 @@ async function saveReminderSettings() {
     startReminderCheck();
     showToast(t("remindersSaved"), false);
   } else {
+    await syncNativeReminders(reminderSettings);
     stopReminderCheck();
     showToast(t("remindersSaved"), false);
   }
@@ -1512,6 +2141,10 @@ async function saveReminderSettings() {
 
 function startReminderCheck() {
   stopReminderCheck();
+  if (isNativeApp()) {
+    syncNativeReminders(reminderSettings).catch(() => {});
+    return;
+  }
   if (!reminderSettings.enabled || reminderSettings.times.length === 0) return;
   // 每 60 秒检查一次
   reminderInterval = setInterval(checkReminders, 60000);
@@ -1525,6 +2158,7 @@ function stopReminderCheck() {
 
 function checkReminders() {
   if (!reminderSettings.enabled) return;
+  if (typeof Notification === "undefined") return;
   if (Notification.permission !== "granted") return;
   const now = new Date();
   const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -1541,7 +2175,7 @@ function checkReminders() {
       localStorage.setItem(lastKey, today);
       new Notification(t("appTitle"), {
         body: `💧 ${t("waterTab")} — ${t("reminder")}`,
-        icon: "/icons/icon-192.svg",
+        icon: `icons/themes/${currentTheme().id}/icon-192.png`,
         silent: false,
       });
       break;
@@ -1569,7 +2203,7 @@ async function renderStatsChart(period) {
 
   const labels = dates.map(dk => {
     const d = fromDateKey(dk);
-    const weekdays = t("weekdays", getLang()).split(", ");
+    const weekdays = t("weekdays", getLang());
     return `${d.getMonth() + 1}/${d.getDate()} ${weekdays[d.getDay()]}`;
   });
   const waterData = dayData.map(d => d.waterTotal);
@@ -1584,8 +2218,8 @@ async function renderStatsChart(period) {
       datasets: [{
         label: t("waterIntake", getLang()) + " (ml)",
         data: waterData,
-        backgroundColor: waterData.map(v => v >= dailyGoal ? "rgba(22,141,132,0.7)" : "rgba(102,198,179,0.5)"),
-        borderColor: waterData.map(v => v >= dailyGoal ? "#168d84" : "#66c6b3"),
+        backgroundColor: waterData.map(v => v >= dailyGoal ? currentTheme().accent : currentTheme().secondary),
+        borderColor: currentTheme().accent,
         borderWidth: 1,
         borderRadius: 6,
       }],
@@ -1625,7 +2259,7 @@ async function renderStatsChart(period) {
       labels,
       datasets: [
         { label: `💚 ${t("medicineTab", getLang())} %`, data: medRates, borderColor: "#1a8a65", backgroundColor: "rgba(26,138,101,0.1)", fill: true, tension: 0.3, pointRadius: 3 },
-        { label: `💊 ${t("supplementTab", getLang())} %`, data: suppRates, borderColor: "#168d84", backgroundColor: "rgba(22,141,132,0.1)", fill: true, tension: 0.3, pointRadius: 3 },
+        { label: `💊 ${t("supplementTab", getLang())} %`, data: suppRates, borderColor: currentTheme().accent, backgroundColor: currentTheme().soft, fill: true, tension: 0.3, pointRadius: 3 },
       ],
     },
     options: {

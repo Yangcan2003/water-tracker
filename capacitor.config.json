@@ -1,0 +1,13 @@
+{
+  "appId": "com.yangcan.watertracker",
+  "appName": "每日健康追踪",
+  "webDir": "www",
+  "plugins": {
+    "Keyboard": { "resize": "native", "autoBackdropColor": "dom" }
+  },
+  "ios": {
+    "backgroundColor": "#f7f7f9",
+    "contentInset": "never",
+    "scheme": "WaterTracker"
+  }
+}

@@ -1,24 +1,24 @@
 {
   "name": "每日健康追踪",
   "short_name": "健康追踪",
-  "description": "饮水、药物、补剂与每日健康记录",
+  "description": "饮水、三餐、训练、药物与补剂的每日健康日记",
   "start_url": "./index.html",
   "display": "standalone",
   "scope": "./",
-  "background_color": "#edf5f1",
-  "theme_color": "#168d84",
+  "background_color": "#f7f7f9",
+  "theme_color": "#ffffff",
   "icons": [
     {
-      "src": "icons/icon-192.svg",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-512.svg",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ],
   "shortcuts": [
@@ -27,21 +27,65 @@
       "short_name": "喝水",
       "description": "快速记录饮水",
       "url": "./index.html?action=water",
-      "icons": [{ "src": "icons/icon-192.svg", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "记录饮食",
+      "short_name": "饮食",
+      "description": "记录早餐、午餐、晚餐或加餐",
+      "url": "./index.html?action=meal",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "记录训练",
+      "short_name": "训练",
+      "description": "记录训练内容",
+      "url": "./index.html?action=workout",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "记录药物",
       "short_name": "吃药",
       "description": "快速标记药物",
       "url": "./index.html?action=medicine",
-      "icons": [{ "src": "icons/icon-192.svg", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "记录补剂",
       "short_name": "补剂",
       "description": "快速标记补剂",
       "url": "./index.html?action=supplement",
-      "icons": [{ "src": "icons/icon-192.svg", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

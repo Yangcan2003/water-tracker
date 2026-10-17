@@ -2,6 +2,8 @@
 // 优先从 /api/config 获取（Cloudflare Pages），失败回退到硬编码
 export async function getFirebaseConfig() {
   try {
+    // 原生 App 没有 /api/config 接口，直接使用硬编码配置，避免一次无效请求
+    if (window.Capacitor?.isNativePlatform?.()) throw new Error("native");
     const res = await fetch("/api/config");
     if (res.ok) return await res.json();
   } catch (e) { /* 降级到硬编码 */ }
@@ -47,6 +49,7 @@ export const DEFAULT_REMINDER = {
 
 // 默认设置
 export const DEFAULT_SETTINGS = {
+  theme: "coral",
   soundEnabled: true,
   vibrationEnabled: true,
   language: "zh",

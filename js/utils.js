@@ -19,9 +19,8 @@ export function isWeekday(dateKey) {
 
 /** HTML 转义 */
 export function esc(v) {
-  const d = document.createElement("div");
-  d.textContent = v;
-  return d.innerHTML;
+  const entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  return String(v ?? "").replace(/[&<>"']/g, character => entities[character]);
 }
 
 /** Firebase 错误消息友好化 */
@@ -84,11 +83,11 @@ export function getInitial(email) {
 /** 厕所 SVG 图标 */
 export const TOILET_SVG = {
   big: `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px;display:block"><path d="M894.357 414.095H858.728l-63.123-345.07A84.163 84.163 0 0 0 712.845 0.011H311.666a84.163 84.163 0 0 0-84.164 69.014l-62.561 345.07H129.311a42.082 42.082 0 0 0-42.081 42.082v31.421A426.989 426.989 0 0 0 286.978 847.257V981.918a42.082 42.082 0 0 0 42.081 42.082h364.709a42.082 42.082 0 0 0 42.081-42.082V847.257a426.989 426.989 0 0 0 199.748-359.659v-31.421a42.082 42.082 0 0 0-41.24-42.082zM283.611 79.125A28.054 28.054 0 0 1 311.666 56.12h401.179a28.054 28.054 0 0 1 28.054 23.005l60.879 334.97H221.891z m415.487 725.209a38.715 38.715 0 0 0-18.516 33.104v129.05H336.654v-129.05a38.996 38.996 0 0 0-18.797-33.105 371.441 371.441 0 0 1-168.327-220.228H867.144a371.722 371.722 0 0 1-168.046 220.228z m181.232-316.735a380.699 380.699 0 0 1-2.525 40.398H145.864A318.699 318.699 0 0 1 143.339 487.598v-17.394h736.991z" fill="#040000"/></svg>`,
-  small: `<svg viewBox="-245 0 1314 1314" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px;display:block"><g fill="none" stroke="#040000" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"><circle cx="412" cy="85" r="58"/><circle cx="412" cy="85" r="26"/><path d="M412 143L412 225"/><rect x="377" y="225" width="70" height="36" rx="2"/><path d="M262 260H562C672 260 735 332 738 448L738 768C738 1080 599 1260 412 1260C225 1260 86 1080 86 768L86 448C89 332 152 260 262 260Z"/><path d="M282 405C305 355 519 355 542 405C566 458 565 740 540 890C514 1045 469 1148 412 1148C355 1148 310 1045 284 890C259 740 258 458 282 405Z"/><circle cx="412" cy="503" r="22"/><ellipse cx="412" cy="1037" rx="76" ry="23"/></g></svg>`,
+  small: `<svg style="width:28px;height:28px;display:block" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#040000" stroke-width="2.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="4.5" r="3"/><path d="M24 7.5V12"/><path d="M15 12H33C38 12 40 15.5 40 20V29C40 39 33 46 24 46S8 39 8 29V20C8 15.5 10 12 15 12Z"/><path d="M18 18H30C33 18 34 20 34 23V29C34 35.5 29.5 40.5 24 40.5S14 35.5 14 29V23C14 20 15 18 18 18Z"/></g><circle cx="24" cy="23" r="1.65" fill="#040000"/><ellipse cx="24" cy="34.5" rx="3.3" ry="1.7" fill="#040000"/></svg>`,
   bigSmall: `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;display:block"><path d="M894.357 414.095H858.728l-63.123-345.07A84.163 84.163 0 0 0 712.845 0.011H311.666a84.163 84.163 0 0 0-84.164 69.014l-62.561 345.07H129.311a42.082 42.082 0 0 0-42.081 42.082v31.421A426.989 426.989 0 0 0 286.978 847.257V981.918a42.082 42.082 0 0 0 42.081 42.082h364.709a42.082 42.082 0 0 0 42.081-42.082V847.257a426.989 426.989 0 0 0 199.748-359.659v-31.421a42.082 42.082 0 0 0-41.24-42.082zM283.611 79.125A28.054 28.054 0 0 1 311.666 56.12h401.179a28.054 28.054 0 0 1 28.054 23.005l60.879 334.97H221.891z m415.487 725.209a38.715 38.715 0 0 0-18.516 33.104v129.05H336.654v-129.05a38.996 38.996 0 0 0-18.797-33.105 371.441 371.441 0 0 1-168.327-220.228H867.144a371.722 371.722 0 0 1-168.046 220.228z m181.232-316.735a380.699 380.699 0 0 1-2.525 40.398H145.864A318.699 318.699 0 0 1 143.339 487.598v-17.394h736.991z" fill="#040000"/></svg>`,
-  smallSmall: `<svg viewBox="-245 0 1314 1314" xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;display:block"><g fill="none" stroke="#040000" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"><circle cx="412" cy="85" r="58"/><circle cx="412" cy="85" r="26"/><path d="M412 143L412 225"/><rect x="377" y="225" width="70" height="36" rx="2"/><path d="M262 260H562C672 260 735 332 738 448L738 768C738 1080 599 1260 412 1260C225 1260 86 1080 86 768L86 448C89 332 152 260 262 260Z"/><path d="M282 405C305 355 519 355 542 405C566 458 565 740 540 890C514 1045 469 1148 412 1148C355 1148 310 1045 284 890C259 740 258 458 282 405Z"/><circle cx="412" cy="503" r="22"/><ellipse cx="412" cy="1037" rx="76" ry="23"/></g></svg>`,
+  smallSmall: `<svg style="width:16px;height:16px;display:block" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#040000" stroke-width="2.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="4.5" r="3"/><path d="M24 7.5V12"/><path d="M15 12H33C38 12 40 15.5 40 20V29C40 39 33 46 24 46S8 39 8 29V20C8 15.5 10 12 15 12Z"/><path d="M18 18H30C33 18 34 20 34 23V29C34 35.5 29.5 40.5 24 40.5S14 35.5 14 29V23C14 20 15 18 18 18Z"/></g><circle cx="24" cy="23" r="1.65" fill="#040000"/><ellipse cx="24" cy="34.5" rx="3.3" ry="1.7" fill="#040000"/></svg>`,
   histBig: `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style="width:12px;height:12px;display:block"><path d="M894.357 414.095H858.728l-63.123-345.07A84.163 84.163 0 0 0 712.845 0.011H311.666a84.163 84.163 0 0 0-84.164 69.014l-62.561 345.07H129.311a42.082 42.082 0 0 0-42.081 42.082v31.421A426.989 426.989 0 0 0 286.978 847.257V981.918a42.082 42.082 0 0 0 42.081 42.082h364.709a42.082 42.082 0 0 0 42.081-42.082V847.257a426.989 426.989 0 0 0 199.748-359.659v-31.421a42.082 42.082 0 0 0-41.24-42.082zM283.611 79.125A28.054 28.054 0 0 1 311.666 56.12h401.179a28.054 28.054 0 0 1 28.054 23.005l60.879 334.97H221.891z m415.487 725.209a38.715 38.715 0 0 0-18.516 33.104v129.05H336.654v-129.05a38.996 38.996 0 0 0-18.797-33.105 371.441 371.441 0 0 1-168.327-220.228H867.144a371.722 371.722 0 0 1-168.046 220.228z m181.232-316.735a380.699 380.699 0 0 1-2.525 40.398H145.864A318.699 318.699 0 0 1 143.339 487.598v-17.394h736.991z" fill="#040000"/></svg>`,
-  histSmall: `<svg viewBox="-245 0 1314 1314" xmlns="http://www.w3.org/2000/svg" style="width:12px;height:12px;display:block"><g fill="none" stroke="#040000" stroke-linecap="round" stroke-linejoin="round" stroke-width="18"><circle cx="412" cy="85" r="58"/><circle cx="412" cy="85" r="26"/><path d="M412 143L412 225"/><rect x="377" y="225" width="70" height="36" rx="2"/><path d="M262 260H562C672 260 735 332 738 448L738 768C738 1080 599 1260 412 1260C225 1260 86 1080 86 768L86 448C89 332 152 260 262 260Z"/><path d="M282 405C305 355 519 355 542 405C566 458 565 740 540 890C514 1045 469 1148 412 1148C355 1148 310 1045 284 890C259 740 258 458 282 405Z"/><circle cx="412" cy="503" r="22"/><ellipse cx="412" cy="1037" rx="76" ry="23"/></g></svg>`,
+  histSmall: `<svg style="width:12px;height:12px;display:block" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#040000" stroke-width="2.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="4.5" r="3"/><path d="M24 7.5V12"/><path d="M15 12H33C38 12 40 15.5 40 20V29C40 39 33 46 24 46S8 39 8 29V20C8 15.5 10 12 15 12Z"/><path d="M18 18H30C33 18 34 20 34 23V29C34 35.5 29.5 40.5 24 40.5S14 35.5 14 29V23C14 20 15 18 18 18Z"/></g><circle cx="24" cy="23" r="1.65" fill="#040000"/><ellipse cx="24" cy="34.5" rx="3.3" ry="1.7" fill="#040000"/></svg>`,
 };
 
 // ========== 多语言 (i18n) ==========
@@ -115,9 +114,9 @@ export const I18N = {
     exportData: "导出数据",
     logout: "退出登录",
     loginToSync: "🔐 登录以同步数据",
-    waterTab: "今天喝水了吗？",
-    medicineTab: "今天吃药了吗？",
-    supplementTab: "今天吃补剂了吗？",
+    waterTab: "今日健康",
+    medicineTab: "药物计划",
+    supplementTab: "每日补剂",
     today: "今天",
     yesterday: "昨天",
     quickAdd: "喝了什么？",
@@ -246,9 +245,9 @@ export const I18N = {
     exportData: "Export Data",
     logout: "Sign Out",
     loginToSync: "🔐 Sign in to sync",
-    waterTab: "How's your water today?",
-    medicineTab: "Did you take your meds?",
-    supplementTab: "Have you taken supplements?",
+    waterTab: "Today's Health",
+    medicineTab: "Medication Plan",
+    supplementTab: "Daily Supplements",
     today: "Today",
     yesterday: "Yesterday",
     quickAdd: "What did you drink?",

@@ -1,0 +1,76 @@
+const { chromium } = require(process.env.PLAYWRIGHT_PATH || '/Users/mac/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const assert = require('node:assert/strict');
+const base = process.env.QA_URL || 'http://127.0.0.1:54026';
+(async () => {
+  const browser = await chromium.launch({ headless: true, executablePath: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge' });
+  try {
+    const page = await browser.newPage({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 2 });
+    const errors = [], sent = []; page.on('pageerror', e => errors.push(e.message));
+    page.on('request', request => { if (request.url().endsWith('/api/ai') && request.method() === 'POST') sent.push(request.postDataJSON()); });
+    await page.goto(base); await page.locator('#accountTab').click();
+    assert.equal(await page.locator('#accountNutritionButton').evaluate(e => e.closest('section').getAttribute('aria-labelledby')), 'accountHealthHeading');
+    assert.equal(await page.locator('#accountFoodsButton').evaluate(e => e.closest('section').getAttribute('aria-labelledby')), 'accountHealthHeading');
+    await page.locator('#accountNutritionButton').click(); await page.locator('#nutritionGoalWeight').fill('70');
+    await page.locator('#nutritionGoalSave').click(); await page.locator('#nutritionGoalDialog').waitFor({ state: 'hidden' });
+    await page.locator('#accountFoodsButton').click(); await page.getByText('添加你常吃的食物').waitFor();
+    const fillFood = async (name, values) => {
+      await page.locator('#foodName').fill(name);
+      for (const [key, value] of Object.entries(values)) await page.locator(`#foodValue${key}`).fill(String(value));
+    };
+    const saveFood = async () => { await page.locator('#foodCatalogSave').click(); await page.locator('#foodCatalogEditor').waitFor({ state: 'hidden' }); await page.locator('#foodCatalogDialog').waitFor({ state: 'visible' }); };
+    await page.locator('#foodCatalogAdd').click();
+    await fillFood('测试燕麦片 <原味>', { kcal: 380, carbsG: 60, proteinG: 13, fatG: 7 });
+    await page.locator('#foodAliases').fill('训练燕麦'); await page.locator('#foodNote').fill('干重，包装营养表');
+    assert.equal(await page.locator('#foodAmount').inputValue(), '100'); assert.equal(await page.locator('#foodUnit').inputValue(), 'g');
+    for (const width of [320, 393, 430]) {
+      await page.setViewportSize({ width, height: 740 });
+      assert.equal(await page.locator('#foodCatalogEditor').evaluate(e => e.scrollWidth <= e.clientWidth), true);
+      const box = await page.locator('#foodCatalogSave').boundingBox(); assert.ok(box.y >= 0 && box.y + box.height <= 740);
+    }
+    await page.setViewportSize({ width: 393, height: 410 });
+    const keyboardSave = await page.locator('#foodCatalogSave').boundingBox(); assert.ok(keyboardSave.y >= 0 && keyboardSave.y + keyboardSave.height <= 410);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.screenshot({ path: 'artifacts/favorite-food-editor.png' }); await saveFood();
+    assert.equal(await page.locator('[data-food-edit]').count(), 1);
+    await page.locator('#foodCatalogSearch').fill('训练燕麦'); assert.equal(await page.locator('[data-food-edit]').count(), 1);
+    await page.locator('[data-food-edit]').click(); await page.locator('#foodValuekcal').fill('390'); await saveFood();
+    assert.equal(await page.locator('[data-food-edit]').count(), 1);
+    await page.locator('#foodCatalogSearch').fill(''); await page.locator('#foodCatalogAdd').click();
+    await fillFood('无糖酸奶', { kcal: 90, carbsG: 0, proteinG: 10, fatG: 0 });
+    await page.locator('#foodUnit').selectOption('袋'); assert.equal(await page.locator('#foodAmount').inputValue(), '1');
+    await page.locator('#foodNote').fill('每袋120g'); await saveFood();
+    assert.equal(await page.locator('[data-food-edit]').count(), 2);
+    await page.locator('#foodCatalogSearch').fill('不存在'); await page.getByText('没有匹配的食物').waitFor();
+    await page.locator('#foodCatalogSearch').fill('');
+    await page.screenshot({ path: 'artifacts/favorite-food-list.png' });
+    await page.locator('#foodCatalogDialog .close-button').click();
+    await page.screenshot({ path: 'artifacts/health-management-foods.png', fullPage: true });
+    await page.reload(); await page.locator('#accountTab').click(); await page.locator('#accountFoodsButton').click();
+    assert.equal(await page.locator('[data-food-edit]').count(), 2);
+    await page.locator('#foodCatalogDialog .close-button').click();
+    await page.locator('#overviewTab').click(); await page.locator('[data-detail="meal"]').click();
+    await page.locator('#mealQuickText').click(); await page.locator('#mealNameInput').fill('训练燕麦50g');
+    assert.match(await page.locator('#mealFoodReferenceHint').textContent(), /2 种常吃食物/);
+    await page.locator('#mealAnalyzeButton').click(); await page.locator('#mealNutritionResult').waitFor({ state: 'visible' });
+    assert.equal(sent.at(-1).foodReferences.length, 2);
+    const oats = sent.at(-1).foodReferences.find(food => food.aliases === '训练燕麦');
+    assert.equal(oats.kcal, 390); assert.equal(oats.servingAmount, 100); assert.equal(oats.servingUnit, 'g');
+    const image = await page.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 30; return canvas.toDataURL('image/png').split(',')[1]; });
+    await page.locator('#mealPhotoInput').setInputFiles({ name: 'food.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
+    await page.getByText('已添加 1 张照片，可继续填写文字或直接保存。').waitFor();
+    await page.locator('#mealAnalyzeButton').click(); await page.locator('#mealNutritionResult').waitFor({ state: 'visible' });
+    assert.equal(sent.at(-1).photos.length, 1); assert.equal(sent.at(-1).foodReferences.length, 2);
+    await page.locator('#mealDialog .close-button').click();
+    await page.locator('#accountTab').click(); await page.locator('#accountFoodsButton').click();
+    await page.locator('[data-food-edit]').filter({ hasText: '无糖酸奶' }).click();
+    await page.locator('#foodCatalogDelete').click(); await page.locator('#foodCatalogDelete').click();
+    await page.locator('#foodCatalogEditor').waitFor({ state: 'hidden' }); await page.locator('#foodCatalogDialog').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-food-edit]').count(), 1);
+    await page.locator('#foodCatalogDialog .close-button').click(); await page.reload(); await page.locator('#accountTab').click();
+    assert.match(await page.locator('#accountFoodsSummary').textContent(), /1 种/);
+    await page.evaluate(() => document.documentElement.dataset.theme = 'midnight'); await page.locator('#accountFoodsButton').click();
+    await page.screenshot({ path: 'artifacts/favorite-food-list-dark.png' });
+    assert.deepEqual(errors, []);
+    console.log('PASS: health-management placement, existing goals retained, per-100g and per-bag foods, zero nutrients, CRUD/search/escaping, persistence/cloud reload, text/image AI requests include current saved references, 320–430px layout, keyboard-height layout and dark mode.');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exit(1); });

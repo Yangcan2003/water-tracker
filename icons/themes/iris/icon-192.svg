@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 1024 1024">
+  <title>每日健康追踪 — 鸢尾蓝爱心</title>
+  <defs>
+    <linearGradient id="ivory" x1="180" y1="0" x2="844" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fdfdff"/>
+      <stop offset="1" stop-color="#f2f5ff"/>
+    </linearGradient>
+    <linearGradient id="rose" x1="588" y1="245" x2="750" y2="780" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5260e8"/>
+      <stop offset="1" stop-color="#3941c3"/>
+    </linearGradient>
+    <linearGradient id="coral" x1="237" y1="264" x2="601" y2="831" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#78adff"/>
+      <stop offset="1" stop-color="#4b73ef"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#ivory)"/>
+  <g id="heart">
+    <path d="M512 358C554 298 605 232 699 232C805 232 890 313 890 421C890 555 774 689 532 852C519 861 511 863 498 855C255 697 134 555 134 422C134 314 217 232 323 232C409 232 466 298 512 358Z" fill="url(#rose)"/>
+    <path d="M512 358C466 298 409 232 323 232C217 232 134 314 134 422C134 555 255 697 498 855C511 863 519 861 532 852C609 797 665 727 665 635C665 554 595 464 512 358Z" fill="url(#coral)"/>
+  </g>
+</svg>
