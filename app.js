@@ -24,6 +24,7 @@ import { mealIcon, mealEntryHTML, mealRecordDate } from "./js/meal-diary.js";
 import { NUTRITION_FIELDS, normalizeMealNutrition, dailyMealNutrition } from "./js/meal-nutrition.js";
 import { analyzeMeal } from "./js/meal-nutrition-client.js";
 import { createMealEditorKeyboard } from "./js/meal-editor-keyboard.js";
+import { createWaterDialog } from "./js/water-dialog.js";
 import { chatGPTPlan } from "./js/chatgpt-plan-client.js";
 import { intakeSummary, intakeCard, intakeIcon } from "./js/intake-ui.js";
 import { enabledPlans, enabledSupplements, SCHEDULE_LABELS } from "./js/supplement-plan.js";
@@ -132,6 +133,7 @@ function $(sel) { return document.querySelector(sel); }
 ].forEach(id => { const el = $("#"+id); if (el) E[id] = el; });
 
 const mealEditorKeyboard = createMealEditorKeyboard(E.mealDialog);
+const customWaterDialog = createWaterDialog(E.customDialog, E.customAmount);
 const historyPage = createHistoryPage(E.timelinePanel, {
   storage,
   openDay: day => { renderDayDetail(day); E.historyDialog.showModal(); },
@@ -193,7 +195,7 @@ E.goalForm.addEventListener("submit", async (event) => {
     showToast(`每日目标已设为 ${goal} ml`, false);
   } catch (e) { showToast(toFriendlyError(e), false); }
 });
-E.customButton.addEventListener("click", () => { E.customDialog.showModal(); setTimeout(() => E.customAmount.select(), 50); });
+E.customButton.addEventListener("click", () => customWaterDialog.open());
 E.customForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!E.customForm.reportValidity()) return;
@@ -242,10 +244,7 @@ E.dashboardQuickWater.addEventListener("click", async () => {
   try { await addRecord(cup.name, Number(cup.amount)); }
   finally { E.dashboardQuickWater.disabled = false; }
 });
-E.dashboardCustomWater.addEventListener("click", () => {
-  E.customDialog.showModal();
-  setTimeout(() => E.customAmount.select(), 50);
-});
+E.dashboardCustomWater.addEventListener("click", () => customWaterDialog.open());
 document.querySelectorAll("[data-home-toilet]").forEach(button => {
   button.addEventListener("click", async () => {
     button.disabled = true;
@@ -458,7 +457,7 @@ if (E.fabMain) {
     item.addEventListener("click", () => {
       const action = item.dataset.fab;
       fabOpen = false; E.fabMain.classList.remove("open"); E.fabMenu.classList.remove("open");
-      if (action === "water") { E.customDialog.showModal(); setTimeout(() => E.customAmount.select(), 50); }
+      if (action === "water") customWaterDialog.open();
       else if (action === "medicine") { switchTab("medicine"); }
       else if (action === "supplement") { switchTab("supplement"); }
     });
