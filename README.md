@@ -4,16 +4,9 @@
 
 ## Git 版本管理
 
-原仓库：[Yangcan2003/water-tracker](https://github.com/Yangcan2003/water-tracker)，日常开发分支为 `main`。
+原仓库：[Yangcan2003/water-tracker](https://github.com/Yangcan2003/water-tracker)，`main` 保存已完成并验证的集成版本。
 
-提交和同步代码：
-
-```bash
-git status
-git add <本次修改的文件>
-git commit -m "描述本次修改"
-git push origin main
-```
+本项目默认在每项修改完成并验证后自动提交、上传，并集成到远端 `main`。多个窗口并行工作时，各任务使用独立 worktree 和任务分支，主分支集成与手机安装分别串行执行；具体约定见 [AGENTS.md](./AGENTS.md)。不要在共享目录批量提交其他窗口尚未完成的改动。
 
 新电脑可用 `git clone https://github.com/Yangcan2003/water-tracker.git` 获取项目，再按下文安装依赖。
 
