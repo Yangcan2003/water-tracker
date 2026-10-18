@@ -43,11 +43,13 @@ const foods = catalog => catalog.entries || catalog.rows.map(row => Object.fromE
     assert.equal(foods(request.context.foodCatalog)[0].carbsG, 25);
     assert.ok(request.messages.some(message => message.role === 'assistant'));
     // Scope and sharing apply to reference foods too; switching sharing clears prior chat data.
-    await page.locator('#assistantRecordsToggle').click(); await page.locator('#assistantRange').selectOption('7');
-    assert.match(await page.locator('#assistantPrivacy').textContent(), /常吃食物/);
+    await page.locator('#assistantRecordsToggle').click(); await page.getByRole('radio', { name: '近 7 天', exact: true }).click();
+    assert.match(await page.locator('#assistantPrivacy').textContent(), /提问时读取/);
     request = await send('看一下这次记录中有哪些常吃食物。');
     assert.equal(request.context.foodCatalog.count, 1);
     await page.locator('#assistantRecordsToggle').click(); await page.locator('#assistantShare').uncheck();
+    assert.equal(await page.locator('#assistantRangeOptions').isVisible(), false);
+    assert.equal(await page.locator('#assistantRangeOptions').isDisabled(), true);
     request = await send('只聊一般话题，不需要读取记录。');
     assert.equal(request.shareRecords, false); assert.equal(request.context, null);
     assert.ok(!JSON.stringify(request).includes('测试冰烤薯'));
@@ -57,6 +59,7 @@ const foods = catalog => catalog.entries || catalog.rows.map(row => Object.fromE
     await page.locator('#foodCatalogDelete').click(); await page.locator('#foodCatalogDelete').click();
     await page.locator('#foodCatalogEditor').waitFor({ state: 'hidden' }); await page.locator('#foodCatalogDialog').waitFor({ state: 'visible' }); await page.locator('#foodCatalogDialog .close-button').click();
     await page.locator('#assistantTab').click(); await page.locator('#assistantRecordsToggle').click(); await page.locator('#assistantShare').check();
+    assert.equal(await page.getByRole('radio', { name: '近 7 天', exact: true }).isChecked(), true);
     request = await send('重新读取我的常吃食物。');
     assert.equal(request.context.foodCatalog.count, 0); assert.deepEqual(request.context.foodCatalog.entries, []);
     assert.deepEqual(errors, []);

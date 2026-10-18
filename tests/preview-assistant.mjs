@@ -22,7 +22,9 @@ const fetcher = async (url, options) => {
   const payload = JSON.parse(options.body); requests.push(payload);
   const question = payload.input?.at(-1)?.content || payload.messages?.at(-1)?.content;
   if (question.includes("失败测试")) return new Response("private error", { status: 500 });
-  return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "这是一条模拟回答，用于检查对话和记录授权。\n未记录不代表零摄入。<img src=x onerror=alert(1)>" }] }], choices: [{ message: { content: "这是一条国内模型的模拟回答。" }, finish_reason: "stop" }] });
+  const reply = "这是一条模拟回答，用于检查对话和记录授权。\n未记录不代表零摄入。<img src=x onerror=alert(1)>";
+  const text = payload.text?.format?.name === "health_assistant" ? JSON.stringify({ reply, actions: [] }) : reply;
+  return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text }] }], choices: [{ message: { content: "这是一条国内模型的模拟回答。" }, finish_reason: "stop" }] });
 };
 const types = { html: "text/html", js: "text/javascript", css: "text/css", png: "image/png", svg: "image/svg+xml", json: "application/json" };
 createServer(async (incoming, outgoing) => {

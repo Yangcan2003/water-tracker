@@ -42,11 +42,11 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     <div class="assistant-scroll" id="assistantScroll"><section class="assistant-intro" id="assistantIntro" aria-labelledby="assistantHeading"><div class="ai-welcome"><span class="ai-welcome-icon" aria-hidden="true">${svg("chat")}</span><h1 id="assistantHeading">今天感觉怎么样？</h1></div><div class="assistant-suggestions" aria-label="快捷提问">${PROMPTS.map(([icon, label, prompt]) => `<button type="button" data-ai-prompt="${esc(prompt)}">${svg(icon)}<span>${label}</span></button>`).join("")}</div></section><div class="assistant-messages" role="log" aria-label="与助手的对话" aria-live="polite" aria-relevant="additions text"></div><span class="assistant-copy-status" id="assistantCopyStatus" role="status"></span></div>
     <div class="assistant-dock"><div class="assistant-connect-notice" id="assistantConnectNotice" hidden><button type="button" id="assistantConnectInline">连接 ChatGPT <span aria-hidden="true">↗</span></button></div>
       <p class="assistant-history-warning" id="assistantHistoryWarning" role="status" hidden></p><div class="assistant-error" id="assistantError" role="alert" hidden><p id="assistantErrorText"></p><button id="assistantRetry" type="button">重试发送</button></div><div class="assistant-verification" id="assistantVerification" hidden><button type="button" id="assistantVerify">发送验证邮件</button><button type="button" id="assistantCheckEmail">我已验证，重试</button><p id="assistantVerificationStatus" role="status"></p></div>
-      <div class="assistant-records-panel" id="assistantRecordsPanel" hidden><strong>健康记录</strong><p>饮水、饮食、训练、身体测量、药物、补剂和如厕记录，以及常吃食物的份量与营养参考，会在提问时发送至 OpenAI。</p><div><label for="assistantRange">记录范围</label><select id="assistantRange"><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all" selected>全部历史</option></select></div><label class="assistant-share"><input type="checkbox" id="assistantShare" checked><span>提问时结合我的健康记录</span></label><p class="assistant-records-note" id="assistantPrivacy">全部历史健康记录将交给 OpenAI</p></div>
+      <section class="assistant-records-panel" id="assistantRecordsPanel" aria-label="健康记录设置" hidden><label class="assistant-share"><span class="assistant-records-heading">${svg("health")}<span>结合健康记录</span></span><input type="checkbox" role="switch" id="assistantShare" checked><span class="assistant-switch-track" aria-hidden="true"></span></label><fieldset class="assistant-record-ranges" id="assistantRangeOptions"><legend class="assistant-sr-only">记录范围</legend>${[["all", "全部记录"], ["30", "近 30 天"], ["7", "近 7 天"]].map(([value, label]) => `<label><input type="radio" name="assistantRange" value="${value}" ${value === "all" ? "checked" : ""}><span>${label}</span></label>`).join("")}</fieldset><p class="assistant-records-note" id="assistantPrivacy">提问时读取并发送至 OpenAI</p></section>
       <form class="assistant-composer" novalidate><input id="assistantPhotos" type="file" accept="image/*" multiple hidden><div class="assistant-attachments" id="assistantAttachments" aria-label="待发送图片" hidden></div><label class="assistant-sr-only" for="assistantInput">向健康助手提问</label><textarea id="assistantInput" rows="1" maxlength="2000" placeholder="发消息…"></textarea><div class="assistant-composer-bottom"><div class="assistant-composer-tools"><button class="assistant-icon-button assistant-attach" id="assistantAttach" type="button" aria-label="添加图片">${svg("attach")}</button><button class="assistant-records-toggle" id="assistantRecordsToggle" type="button" aria-expanded="false" aria-controls="assistantRecordsPanel">${svg("health")}<span id="assistantRecordsLabel">全部记录</span>${svg("down")}</button></div><button class="assistant-send" type="button" id="assistantSend" aria-label="发送问题">${svg("arrow")}</button></div></form><div class="assistant-caption"><span id="assistantProgress" role="status">AI 建议仅供参考</span></div>
     </div>`;
   const find = selector => root.querySelector(selector);
-  const input = find("#assistantInput"), share = find("#assistantShare"), range = find("#assistantRange"), scroll = find("#assistantScroll"), conversation = find(".assistant-messages");
+  const input = find("#assistantInput"), share = find("#assistantShare"), range = { value: "all" }, rangeOptions = find("#assistantRangeOptions"), scroll = find("#assistantScroll"), conversation = find(".assistant-messages");
   function showError(message = "", retry = false) { find("#assistantErrorText").textContent = message; find("#assistantError").hidden = !message; find("#assistantRetry").hidden = !retry; }
   function setProgress(value) { progress = value; find("#assistantProgress").textContent = value || "AI 建议仅供参考"; }
   function resizeInput() { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 144)}px`; }
@@ -57,7 +57,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     find("#assistantSend").disabled = planBusy || verificationBusy || photoBusy || actionBusy;
     find("#assistantAttach").disabled = busy || planBusy || photoBusy || actionBusy;
     find("#assistantSend").setAttribute("aria-label", busy ? "停止回答" : "发送问题"); find("#assistantSend").innerHTML = svg(busy ? "stop" : "arrow");
-    input.readOnly = busy || actionBusy; share.disabled = busy || actionBusy; range.disabled = busy || actionBusy;
+    input.readOnly = busy || actionBusy; share.disabled = busy || actionBusy; rangeOptions.disabled = !share.checked || busy || actionBusy;
     find("#assistantConnectNotice").hidden = !plan || connected || planBusy || busy;
     find("#assistantConnectPlan").hidden = !plan || connected; find("#assistantPlanAccount").hidden = !plan || !connected; find("#assistantLogin").hidden = !!getUser();
     for (const id of ["assistantConnectPlan", "assistantConnectInline", "assistantDisconnectPlan"]) find(`#${id}`).disabled = busy || planBusy;
@@ -132,10 +132,12 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   }
   function updatePrivacy() {
     const label = range.value === "all" ? "全部历史" : `${range.value} 天`;
-    find("#assistantRecordsLabel").textContent = share.checked ? (range.value === "all" ? "全部记录" : `近 ${range.value} 天`) : "不带记录";
+    rangeOptions.hidden = !share.checked; rangeOptions.disabled = !share.checked || busy || actionBusy;
+    rangeOptions.querySelectorAll("input").forEach(option => { option.checked = option.value === range.value; });
+    find("#assistantRecordsLabel").textContent = share.checked ? (range.value === "all" ? "全部记录" : `近 ${range.value} 天`) : "不结合记录";
     find("#assistantRecordsToggle").dataset.enabled = String(share.checked);
     find("#assistantRecordsToggle").setAttribute("aria-label", share.checked ? `健康数据：${label}，点击调整` : "健康数据已关闭，点击调整");
-    find("#assistantPrivacy").textContent = share.checked ? `${label}健康记录及常吃食物参考将交给 OpenAI` : "仅发送对话";
+    find("#assistantPrivacy").textContent = share.checked ? "提问时读取并发送至 OpenAI" : "仅使用对话和本次添加的图片";
   }
   async function checkConnection({ force = false } = {}) {
     if (statusCheck) return statusCheck.promise;
@@ -257,7 +259,16 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     const item = conversations.find(item => item.id === button.dataset.conversation); if (!item) return;
     restoreConversation(item); persistHistory();
   });
-  for (const control of [share, range]) control.addEventListener("change", () => { clearConversation(); activeId = null; persistHistory(); updatePrivacy(); });
+  function changeRecordSettings() {
+    if (busy || actionBusy) return;
+    const draftPhotos = attachments;
+    clearConversation(); attachments = draftPhotos; renderAttachments(); activeId = null; persistHistory(); updatePrivacy();
+  }
+  share.addEventListener("change", changeRecordSettings);
+  rangeOptions.addEventListener("change", event => {
+    if (!share.checked || busy || actionBusy || event.target.name !== "assistantRange") return;
+    range.value = event.target.value; changeRecordSettings(); closePanel("assistantRecordsPanel", "assistantRecordsToggle"); find("#assistantRecordsToggle").focus({ preventScroll: true });
+  });
   root.addEventListener("click", event => { if (!event.target.closest("#assistantRecordsPanel, #assistantRecordsToggle")) closePanel("assistantRecordsPanel", "assistantRecordsToggle"); });
   root.addEventListener("keydown", event => { if (event.key === "Escape") closePanels(); });
   root.querySelectorAll("[data-ai-prompt]").forEach(button => button.addEventListener("click", () => { input.value = button.dataset.aiPrompt; resizeInput(); input.focus(); }));
