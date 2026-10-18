@@ -39,3 +39,14 @@ export function validateFoodReferences(value) {
   return result;
 }
 export const foodServingLabel = food => `每 ${food.servingAmount} ${food.servingUnit}`;
+
+// Keep the stored/AI value in kcal regardless of the packaging's energy unit.
+export const KJ_PER_KCAL = 4.184;
+export function foodEnergyToKcal(value, unit = "kcal") {
+  if (!["kcal", "kJ"].includes(unit) || typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  return unit === "kJ" ? value / KJ_PER_KCAL : value;
+}
+export function foodEnergyFromKcal(value, unit = "kcal") {
+  if (foodEnergyToKcal(value, unit) === null) return null;
+  return unit === "kJ" ? value * KJ_PER_KCAL : value;
+}

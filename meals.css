@@ -242,3 +242,6 @@ html[data-focus-input="keyboard"] #foodCatalogAdd:focus-visible { outline: 2px s
 .food-form-message { margin: 0; color: var(--theme-accent); font-size: 11px; line-height: 1.7; }
 .food-delete-button { display: block; min-height: 40px; margin: 10px auto 0; padding: 8px; border: 0; background: transparent; color: #c63a50; font-size: 12px; }
 .food-settings-dialog button:disabled { opacity: .45; }
+
+#foodEnergyUnit { flex: 0 0 62px; width: 62px; min-width: 0; min-height: 32px; margin: 0; padding: 3px; border: 0; border-radius: 7px; background: var(--theme-surface); color: var(--theme-text); font: inherit; font-size: 12px; }
+.food-energy-conversion { margin: -6px 0 16px; color: var(--theme-muted); font-size: 11px; line-height: 1.7; }

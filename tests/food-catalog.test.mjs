@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeFavoriteFood, normalizeFoodCatalog, validateFoodReferences, foodServingLabel } from "../js/food-catalog.js";
+import { normalizeFavoriteFood, normalizeFoodCatalog, validateFoodReferences, foodServingLabel, foodEnergyToKcal, foodEnergyFromKcal } from "../js/food-catalog.js";
 import { mealAnalysisInput, validateMealAnalysis, MEAL_NUTRITION_INSTRUCTIONS } from "../js/meal-nutrition.js";
 import { analyzeMeal } from "../js/meal-nutrition-client.js";
 import { handleAI } from "../server/ai-service.js";
@@ -51,4 +51,14 @@ test("native and web clients forward catalog context and refuse invalid context 
   assert.match(payload.input[0].content[0].text, /"kcal":380/);
   assert.equal(payload.text.format.strict, true);
   await assert.rejects(analyzeMeal({ ...body, foodReferences: [{ ...food, servingUnit: "bad" }] }, { plan: { analyzeMeal: () => assert.fail("invalid context must not reach the model") } }));
+});
+
+test("food energy conversion keeps kJ and kcal consistent, including zero and invalid input", () => {
+  assert.ok(Math.abs(foodEnergyToKcal(418.4, "kJ") - 100) < 1e-10);
+  assert.ok(Math.abs(foodEnergyFromKcal(100, "kJ") - 418.4) < 1e-10);
+  assert.equal(foodEnergyToKcal(0, "kJ"), 0);
+  assert.equal(foodEnergyToKcal(380, "kcal"), 380);
+  for (const value of [null, "", "100", NaN, Infinity, -1]) assert.equal(foodEnergyToKcal(value, "kJ"), null);
+  assert.equal(foodEnergyToKcal(100, "bad"), null);
+  assert.equal(normalizeFavoriteFood({ ...food, kcal: foodEnergyToKcal(418.4, "kJ") }).kcal, 100);
 });
