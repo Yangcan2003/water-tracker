@@ -14,7 +14,18 @@ test("a stalled native operation releases the UI on cancellation and rejects lat
 test("model formatting permits readable lists and emphasis but escapes HTML", () => {
   const html = formatAssistantText('### 提示\n\n- **喝水**\n- <img src=x onerror=alert(1)>\n\n`<script>`');
   assert.match(html, /<h3>提示<\/h3>/); assert.match(html, /<strong>喝水<\/strong>/);
-  assert.match(html, /<ul><li>/); assert.ok(!html.includes("<img")); assert.ok(!html.includes("<script>"));
+  assert.match(html, /<ul>\s*<li>/); assert.ok(!html.includes("<img")); assert.ok(!html.includes("<script>"));
+});
+test("Markdown tables, old blank-separated rows, nested lists and code render as semantic blocks", () => {
+  const html = formatAssistantText('结论。\n\n| 来源 | 脂肪 |\n\n|---|---:|\n\n| 鸡蛋 | **24 g** |\n\n| 油 | 9 g |\n\n另一段。\n\n1. 第一步\n   - 子项\n2. 第二步\n\n> 这是估算\n\n```js\nconst text = "<script>";\n```');
+  assert.match(html, /assistant-table-scroll/); assert.match(html, /<thead>/); assert.match(html, /<td>鸡蛋<\/td>/);
+  assert.match(html, /<strong>24 g<\/strong>/); assert.match(html, /<blockquote>/); assert.match(html, /<pre><code/);
+  assert.match(html, /<ol>[\s\S]*<ul>/); assert.ok(!html.includes('<script>'));
+});
+test("model output never executes HTML or JavaScript links or loads external images", () => {
+  const html = formatAssistantText('<script>alert(1)</script>\n\n[坏链接](javascript:alert(1))\n\n![追踪](https://tracker.invalid/pixel)\n\n[文档](https://example.com)');
+  assert.ok(!html.includes('<script>')); assert.ok(!html.includes('href="javascript:')); assert.ok(!html.includes('<img'));
+  assert.match(html, /rel="noopener noreferrer"/);
 });
 test("all-history health context includes every category and dated measurements without account or photo fields", () => {
   const categories = ASSISTANT_CATEGORIES.map(item => item.key), now = new Date(2026, 9, 15);

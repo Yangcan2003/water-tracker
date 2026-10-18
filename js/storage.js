@@ -397,9 +397,10 @@ class StorageManager {
   }
 
   async updateProfile(partial) {
+    const generation = this.sync.generation;
     const data = this._loadLocal();
     Object.assign(data.profile, partial);
-    this._saveLocal(data);
+    if (!this._saveLocal(data)) throw new Error("设备存储空间不足，设置未保存");
     this.profileRevision++;
 
     if (this.isCloud) {
@@ -409,7 +410,7 @@ class StorageManager {
         }, { merge: true });
       } catch (e) {
         // 静默失败，等待下次合并上传
-        this._markPendingUpload("profile");
+        if (generation === this.sync.generation) this._markPendingUpload("profile");
       }
     } else {
       this._markPendingUpload("profile");
@@ -441,6 +442,37 @@ class StorageManager {
     const entry = { ...values, id: generateLocalId(), createdAt: timestamp, updatedAt: timestamp };
     this._saveBodyMeasurement(entry);
     return entry;
+  }
+
+  // Assistant proposals pass the same local-first write queue as the manual
+  // editors. The caller validates values and rechecks the reviewed snapshot.
+  async writeAssistantRecord(category, dateKey, record, deleted = false, id = null) {
+    if (category === "goals") {
+      await this.updateProfile({ dailyGoal: record.dailyGoal, ...(record.nutritionGoal ? { nutritionGoal: record.nutritionGoal } : {}) });
+      return record;
+    }
+    if (category === "body") {
+      const values = validateMeasurement({ ...record, date: dateKey });
+      const now = new Date().toISOString();
+      const entry = { ...values, id: id || generateLocalId(), createdAt: record.createdAt || now, updatedAt: now, ...(deleted ? { deleted: true } : {}) };
+      this._saveBodyMeasurement(entry); return entry;
+    }
+    if (category === "meal" && !deleted) return this.saveMealRecord(record, id);
+    if (!["water", "meal", "medicine", "supplement", "toilet", "workout"].includes(category)) throw new Error("不支持的记录类别");
+    const data = this._getDayRecords(dateKey), recordID = category === "workout" ? dateKey : id || generateLocalId();
+    if (category === "workout") {
+      data.workoutDays[dateKey] = !deleted && record.isWorkout !== false;
+      data.workoutDetails[dateKey] = deleted ? {} : Object.fromEntries(["activity", "duration", "focus", "intensity", "note"].map(key => [key, record[key] ?? ""]));
+    } else {
+      const rows = data.records[dateKey][category], index = rows.findIndex(row => row.id === recordID);
+      if (deleted) { if (index >= 0) rows.splice(index, 1); }
+      else {
+        const entry = { ...record, id: recordID, logDate: dateKey, recordedAt: record.recordedAt.toISOString() };
+        if (index >= 0) rows[index] = entry; else rows.push(entry);
+      }
+    }
+    this._commitRecordChange(data, category, dateKey, recordID, deleted);
+    return { ...record, id: recordID, logDate: dateKey };
   }
 
   async deleteBodyMeasurement(id) {

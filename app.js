@@ -146,6 +146,11 @@ const assistantPage = createAssistantPage(E.assistantPanel, {
   getUser: () => currentUser,
   verifyEmail: user => { if (auth) auth.languageCode = getLang() === "zh" ? "zh-CN" : "en"; return sendEmailVerification(user); },
   login: () => { setAuthMode("login"); E.authDialog.showModal(); },
+  onRecordsChanged: () => {
+    dailyGoal = storage.getCachedProfile().dailyGoal || 2000;
+    historyPage.reset();
+    void loadDay();
+  },
 });
 
 // ========== 事件绑定 ==========

@@ -27,9 +27,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>用于添加你选择的食物照片或设置个人头像。</string>
+	<string>用于添加你选择的食物照片、助手对话图片或设置个人头像。</string>
 	<key>NSCameraUsageDescription</key>
-	<string>在你选择拍照记录食物或设置头像时使用相机。</string>
+	<string>在你选择为健康记录、助手对话拍照或设置头像时使用相机。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

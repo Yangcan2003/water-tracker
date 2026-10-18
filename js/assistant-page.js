@@ -5,6 +5,9 @@ import { chatGPTPlan } from "./chatgpt-plan-client.js";
 import { formatAssistantText, awaitAssistantOperation } from "./assistant-ui.js";
 import { createAssistantKeyboard } from "./assistant-keyboard.js";
 import { createAssistantHistory } from "./assistant-history.js";
+import { prepareMealPhoto, isMealPhoto } from "./meals.js";
+import { parseAssistantResponse } from "./assistant-protocol.js";
+import { ACTION_LABELS, buildActionCatalog, prepareAssistantAction, describeAssistantRecord, executeAssistantAction } from "./assistant-actions.js";
 
 const icons = {
   chat: '<path d="M20 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 18 0Z"/><path d="M7 11h.01M11 11h.01M15 11h.01"/>',
@@ -14,6 +17,7 @@ const icons = {
   food: '<path d="M5 3v6m3-6v6M3 3v5a3 3 0 0 0 6 0V3M6 11v10M17 3v18m0-18c-4 2-4 9 0 9h3V3Z"/>',
   copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h4"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  attach: '<path d="M12 5v14M5 12h14"/>',
   history: '<path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/>',
 };
 const svg = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`;
@@ -23,12 +27,13 @@ const PROMPTS = [
   ["food", "今天怎么吃", "请结合饮食和身体记录，帮我安排今天的饮食思路。不要臆测热量，信息不足时先问我必要的问题。"],
 ];
 
-export function createAssistantPage(root, { storage, getUser, login, verifyEmail, plan = chatGPTPlan, request = plan?.request ?? assistantRequest, historyStore = createAssistantHistory() }) {
+export function createAssistantPage(root, { storage, getUser, login, verifyEmail, plan = chatGPTPlan, request = plan?.request ?? assistantRequest, historyStore = createAssistantHistory(), onRecordsChanged = () => {} }) {
   const backend = DEFAULT_AI_BACKEND;
   let messages = [], pending = null, busy = false, generation = 0, controller = null;
   let connection = "checking", statusCheck = null, identityGeneration = 0, checkedAt = 0, lastConnectionError = "";
   let planBusy = false, verificationVisible = false, verificationBusy = false, verificationSentAt = 0, progress = "", copyTimer;
   let conversations = [], activeId = null, historyOwner = null, historyReadable = true;
+  let attachments = [], photoBusy = false, actionBusy = false;
   root.innerHTML = `
     <header class="assistant-toolbar"><button class="assistant-title" id="assistantAccountToggle" type="button" aria-expanded="false" aria-controls="assistantAccountMenu"><strong>健康助手</strong>${svg("down")}</button><div class="assistant-toolbar-actions"><button class="assistant-icon-button" id="assistantHistoryToggle" type="button" aria-label="历史对话" aria-expanded="false" aria-controls="assistantHistoryPanel">${svg("history")}</button><button class="assistant-icon-button" id="assistantNewChat" type="button" aria-label="开始新对话" title="新对话">${svg("edit")}</button></div>
       <section class="assistant-account-menu" id="assistantAccountMenu" aria-label="助手账号" hidden><div class="assistant-menu-heading"><strong>ChatGPT</strong><button class="assistant-icon-button" id="assistantCloseAccount" type="button" aria-label="关闭账号菜单">${svg("close")}</button></div><p id="assistantConnection" role="status">正在检查连接</p><p id="assistantPlanLabel">由 OpenAI 提供</p><button id="assistantConnectPlan" type="button">连接 ChatGPT</button><div id="assistantPlanAccount" hidden><a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">在 ChatGPT 中管理会员</a><button id="assistantDisconnectPlan" type="button">断开连接</button></div><button id="assistantLogin" type="button" hidden>登录 App</button></section>
@@ -38,7 +43,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     <div class="assistant-dock"><div class="assistant-connect-notice" id="assistantConnectNotice" hidden><button type="button" id="assistantConnectInline">连接 ChatGPT <span aria-hidden="true">↗</span></button></div>
       <p class="assistant-history-warning" id="assistantHistoryWarning" role="status" hidden></p><div class="assistant-error" id="assistantError" role="alert" hidden><p id="assistantErrorText"></p><button id="assistantRetry" type="button">重试发送</button></div><div class="assistant-verification" id="assistantVerification" hidden><button type="button" id="assistantVerify">发送验证邮件</button><button type="button" id="assistantCheckEmail">我已验证，重试</button><p id="assistantVerificationStatus" role="status"></p></div>
       <div class="assistant-records-panel" id="assistantRecordsPanel" hidden><strong>健康记录</strong><p>饮水、饮食、训练、身体测量、药物、补剂和如厕记录，以及常吃食物的份量与营养参考，会在提问时发送至 OpenAI。</p><div><label for="assistantRange">记录范围</label><select id="assistantRange"><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all" selected>全部历史</option></select></div><label class="assistant-share"><input type="checkbox" id="assistantShare" checked><span>提问时结合我的健康记录</span></label><p class="assistant-records-note" id="assistantPrivacy">全部历史健康记录将交给 OpenAI</p></div>
-      <form class="assistant-composer" novalidate><label class="assistant-sr-only" for="assistantInput">向健康助手提问</label><textarea id="assistantInput" rows="1" maxlength="2000" placeholder="发消息…"></textarea><div class="assistant-composer-bottom"><button class="assistant-records-toggle" id="assistantRecordsToggle" type="button" aria-expanded="false" aria-controls="assistantRecordsPanel">${svg("health")}<span id="assistantRecordsLabel">全部记录</span>${svg("down")}</button><button class="assistant-send" type="button" id="assistantSend" aria-label="发送问题">${svg("arrow")}</button></div></form><div class="assistant-caption"><span id="assistantProgress" role="status">AI 建议仅供参考</span></div>
+      <form class="assistant-composer" novalidate><input id="assistantPhotos" type="file" accept="image/*" multiple hidden><div class="assistant-attachments" id="assistantAttachments" aria-label="待发送图片" hidden></div><label class="assistant-sr-only" for="assistantInput">向健康助手提问</label><textarea id="assistantInput" rows="1" maxlength="2000" placeholder="发消息…"></textarea><div class="assistant-composer-bottom"><div class="assistant-composer-tools"><button class="assistant-icon-button assistant-attach" id="assistantAttach" type="button" aria-label="添加图片">${svg("attach")}</button><button class="assistant-records-toggle" id="assistantRecordsToggle" type="button" aria-expanded="false" aria-controls="assistantRecordsPanel">${svg("health")}<span id="assistantRecordsLabel">全部记录</span>${svg("down")}</button></div><button class="assistant-send" type="button" id="assistantSend" aria-label="发送问题">${svg("arrow")}</button></div></form><div class="assistant-caption"><span id="assistantProgress" role="status">AI 建议仅供参考</span></div>
     </div>`;
   const find = selector => root.querySelector(selector);
   const input = find("#assistantInput"), share = find("#assistantShare"), range = find("#assistantRange"), scroll = find("#assistantScroll"), conversation = find(".assistant-messages");
@@ -49,21 +54,37 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     const connected = connection === "connected";
     find("#assistantConnection").textContent = connection === "checking" ? "正在检查连接" : connected ? (plan ? "ChatGPT 会员已连接" : "GPT 已连接") : connection === "error" ? "连接暂不可用" : "GPT · 待连接";
     root.dataset.connection = connection; root.dataset.busy = String(busy);
-    find("#assistantSend").disabled = planBusy || verificationBusy;
+    find("#assistantSend").disabled = planBusy || verificationBusy || photoBusy || actionBusy;
+    find("#assistantAttach").disabled = busy || planBusy || photoBusy || actionBusy;
     find("#assistantSend").setAttribute("aria-label", busy ? "停止回答" : "发送问题"); find("#assistantSend").innerHTML = svg(busy ? "stop" : "arrow");
-    input.readOnly = busy; share.disabled = busy; range.disabled = busy;
+    input.readOnly = busy || actionBusy; share.disabled = busy || actionBusy; range.disabled = busy || actionBusy;
     find("#assistantConnectNotice").hidden = !plan || connected || planBusy || busy;
     find("#assistantConnectPlan").hidden = !plan || connected; find("#assistantPlanAccount").hidden = !plan || !connected; find("#assistantLogin").hidden = !!getUser();
     for (const id of ["assistantConnectPlan", "assistantConnectInline", "assistantDisconnectPlan"]) find(`#${id}`).disabled = busy || planBusy;
     find("#assistantConnectPlan").textContent = planBusy ? "正在连接…" : "连接 ChatGPT";
     find("#assistantVerification").hidden = !verificationVisible;
-    find("#assistantVerify").disabled = busy || verificationBusy; find("#assistantCheckEmail").disabled = busy || verificationBusy; find("#assistantNewChat").disabled = planBusy;
-    find("#assistantHistoryToggle").disabled = busy || planBusy;
+    find("#assistantVerify").disabled = busy || verificationBusy; find("#assistantCheckEmail").disabled = busy || verificationBusy; find("#assistantNewChat").disabled = planBusy || actionBusy || photoBusy;
+    find("#assistantHistoryToggle").disabled = busy || planBusy || actionBusy || photoBusy;
     root.querySelectorAll("[data-ai-prompt]").forEach(button => { button.disabled = busy || planBusy; });
   }
+  function photoMarkup(photos = []) {
+    return photos.filter(isMealPhoto).length ? `<div class="assistant-message-photos">${photos.filter(isMealPhoto).map((photo, index) => `<img src="${photo}" alt="对话附件 ${index + 1}" loading="lazy">`).join("")}</div>` : "";
+  }
+  function renderAttachments() {
+    const panel = find("#assistantAttachments"); panel.hidden = !attachments.length;
+    panel.innerHTML = attachments.map((photo, index) => `<div><img src="${photo}" alt="待发送图片 ${index + 1}"><button type="button" data-remove-photo="${index}" aria-label="移除第 ${index + 1} 张图片">${svg("close")}</button></div>`).join("");
+  }
+  function actionMarkup(message, index) {
+    if (!message.proposals?.length) return message.actionNotice ? `<p class="assistant-action-notice">${esc(message.actionNotice)}</p>` : "";
+    return `<div class="assistant-proposals">${message.proposals.map((change, actionIndex) => {
+      if (change.state === "invalid") return `<p class="assistant-action-notice">${esc(change.error)}</p>`;
+      const label = { create: "新增", update: "修改", delete: "删除" }[change.operation];
+      return `<section class="assistant-proposal" aria-label="${label}${ACTION_LABELS[change.category]}"><strong>${label}${ACTION_LABELS[change.category]}</strong><dl>${change.before ? `<dt>当前</dt><dd>${esc(describeAssistantRecord(change.category, change.before, change.date))}</dd>` : ""}${change.after ? `<dt>保存为</dt><dd>${esc(describeAssistantRecord(change.category, change.after, change.date))}</dd>` : ""}</dl>${change.operation === "delete" && change.state === "pending" ? '<p>确认后将删除这条记录。</p>' : ""}${change.state === "pending" ? `<div class="assistant-proposal-buttons"><button type="button" data-confirm-action="${index}:${actionIndex}" ${busy || actionBusy ? "disabled" : ""}>确认${label}</button><button type="button" data-cancel-action="${index}:${actionIndex}" ${busy || actionBusy ? "disabled" : ""}>取消</button></div>` : `<p role="status">${change.state === "applied" ? "已保存到 App" : change.state === "applying" ? "正在保存…" : "已取消"}</p>`}${change.error ? `<p role="alert">${esc(change.error)}</p>` : ""}</section>`;
+    }).join("")}</div>`;
+  }
   function renderMessages() {
-    const content = [...messages, ...(pending ? [{ role: "user", content: pending.question, state: pending.state }] : [])];
-    conversation.innerHTML = content.map((message, index) => `<article class="assistant-message" data-role="${message.role}"><span class="assistant-message-author">${message.role === "user" ? "你" : "健康助手"}</span><div class="assistant-message-content">${message.role === "user" ? esc(message.content) : formatAssistantText(message.content)}</div>${message.state === "failed" ? '<small class="assistant-message-status">未发送完成 · 问题已保留</small>' : ""}${message.source ? `<small class="assistant-message-source">${esc(message.source)}</small>` : ""}${message.role === "assistant" ? `<button class="assistant-copy" type="button" data-copy-answer="${index}" aria-label="复制这条回答">${svg("copy")}<span>复制</span></button>` : ""}</article>`).join("") + (busy && pending ? `<div class="assistant-thinking" role="status"><span class="assistant-thinking-dot"></span><span>${esc(progress || "正在思考")}</span></div>` : "");
+    const content = [...messages, ...(pending ? [{ role: "user", content: pending.question, photos: pending.photos, state: pending.state }] : [])];
+    conversation.innerHTML = content.map((message, index) => `<article class="assistant-message" data-role="${message.role}"><span class="assistant-message-author">${message.role === "user" ? "你" : "健康助手"}</span>${photoMarkup(message.photos)}<div class="assistant-message-content">${message.role === "user" ? esc(message.content) : formatAssistantText(message.content)}</div>${message.state === "failed" ? '<small class="assistant-message-status">未发送完成 · 问题已保留</small>' : ""}${message.source ? `<small class="assistant-message-source">${esc(message.source)}</small>` : ""}${message.role === "assistant" ? actionMarkup(message, index) + `<button class="assistant-copy" type="button" data-copy-answer="${index}" aria-label="复制这条回答">${svg("copy")}<span>复制</span></button>` : ""}</article>`).join("") + (busy && pending ? `<div class="assistant-thinking" role="status"><span class="assistant-thinking-dot"></span><span>${esc(progress || "正在思考")}</span></div>` : "");
     find("#assistantIntro").hidden = content.length > 0;
     keyboard.contentChanged();
   }
@@ -90,7 +111,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     renderHistory();
   }
   function saveConversation() {
-    const content = [...messages, ...(pending ? [{ role: "user", content: pending.question, state: "failed" }] : [])];
+    const content = [...messages, ...(pending ? [{ role: "user", content: pending.question, photoIds: pending.photoIds, state: "failed" }] : [])];
     if (!content.length) return;
     const previous = conversations.find(item => item.id === activeId), now = Date.now();
     activeId ||= globalThis.crypto?.randomUUID?.() || `${now}-${Math.random().toString(36).slice(2)}`;
@@ -100,11 +121,13 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   function restoreConversation(item) {
     clearConversation(); activeId = item.id; share.checked = item.shareRecords; range.value = item.range;
     messages = item.messages.map(message => ({ ...message }));
-    if (messages.at(-1)?.role === "user") { const last = messages.pop(); pending = { question: last.content, state: "failed" }; showError("上次回答未完成，可以重试。", true); }
+    if (messages.at(-1)?.role === "user") { const last = messages.pop(); pending = { question: last.content, photoIds: last.photoIds, state: "failed" }; showError("上次回答未完成，可以重试。", true); }
     input.value = ""; resizeInput(); updatePrivacy(); renderMessages(); closePanels(); scrollToEnd();
+    const version = generation;
+    for (const message of [...messages, ...(pending ? [pending] : [])]) if (message.photoIds?.length) void storage.mealPhotos.get(message.photoIds).then(photos => { if (version === generation) { message.photos = photos; renderMessages(); } }).catch(() => {});
   }
   function clearConversation() {
-    generation++; controller?.abort("reset"); controller = null; busy = false; messages = []; pending = null; verificationVisible = false; verificationBusy = false;
+    generation++; controller?.abort("reset"); controller = null; busy = false; messages = []; pending = null; attachments = []; renderAttachments(); verificationVisible = false; verificationBusy = false;
     find("#assistantVerificationStatus").textContent = ""; setProgress(""); renderMessages(); updateControls(); showError();
   }
   function updatePrivacy() {
@@ -134,19 +157,22 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   async function send(retryQuestion) {
     if (busy) { controller?.abort("user"); return; }
     closePanels();
-    if (planBusy || verificationBusy) { showError("请先完成当前连接操作，再发送问题。"); return; }
-    const question = (typeof retryQuestion === "string" ? retryQuestion : input.value).trim();
+    if (planBusy || verificationBusy || photoBusy || actionBusy) { showError("请先完成当前连接操作，再发送问题。"); return; }
+    if (typeof retryQuestion === "string" && pending?.photoIds?.length && !pending.photos) { showError("正在恢复原图片，请稍后重试或重新添加图片。"); return; }
+    const selectedPhotos = attachments.length ? [...attachments] : typeof retryQuestion === "string" && pending?.question === retryQuestion ? [...(pending.photos || [])] : [];
+    const question = (typeof retryQuestion === "string" ? retryQuestion : input.value).trim() || (selectedPhotos.length ? "请看看这张图片。" : "");
     if (!question) { showError("写下你想问的问题，再点击发送。"); input.focus(); return; }
     if (!getUser()) { showError("请先登录 App，再使用健康助手。"); find("#assistantAccountMenu").hidden = false; updateControls(); return; }
     showError(); const user = getUser(), refreshToken = verificationVisible, version = generation;
     verificationVisible = false; busy = true; controller = new AbortController(); const active = controller, wait = promise => awaitAssistantOperation(promise, active.signal);
     if (pending && pending.question !== question) messages.push({ role: "user", content: pending.question, state: "failed" });
-    pending = { question, state: "sending" }; input.value = ""; resizeInput(); saveConversation(); setProgress("正在准备回答…"); updateControls(); renderMessages(); scrollToEnd();
+    pending = { question, photos: selectedPhotos, state: "sending" }; attachments = []; renderAttachments(); input.value = ""; resizeInput(); saveConversation(); setProgress("正在准备回答…"); updateControls(); renderMessages(); scrollToEnd();
     const timer = setTimeout(() => active.abort("timeout"), 65000);
     try {
+      if (selectedPhotos.length) { pending.photoIds = await wait(storage.mealPhotos.put(selectedPhotos)); if (version === generation) saveConversation(); }
       if (!await wait(checkConnection())) throw new Error(lastConnectionError || (plan ? "请先连接 ChatGPT 会员账号。" : "助手尚未接通，请稍后重试。"));
       checkAborted(active.signal); if (version !== generation || getUser()?.uid !== user.uid) return;
-      let context = null;
+      let context = null, catalog = buildActionCatalog([], {}, null, question);
       if (share.checked) {
         setProgress("正在读取健康记录…"); renderMessages();
         const snapshotAt = new Date();
@@ -156,6 +182,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
         ]));
         if (storage.syncStatus.failures.some(item => item.kind === "read")) throw new Error("部分健康记录尚未同步。请稍后重试，或关闭健康记录后提问。");
         checkAborted(active.signal); if (version !== generation || getUser()?.uid !== user.uid) return;
+        catalog = buildActionCatalog(days, storage.getCachedBodyMeasurements(), profile, question);
         context = buildHealthContext(days, { rangeDays: range.value === "all" ? "all" : Number(range.value), categories: CATEGORIES, bodyMeasurements: storage.getCachedBodyMeasurements(), profile, compact: true, now: snapshotAt });
       }
       const token = plan ? undefined : await wait(user.getIdToken(refreshToken));
@@ -163,15 +190,20 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       const history = messages.filter(message => message.state !== "failed").slice(-10).map(({ role, content }) => ({ role, content }));
       while (history.reduce((sum, item) => sum + item.content.length, question.length) > 20000) history.splice(0, 2);
       setProgress("正在思考…"); renderMessages();
-      const result = await wait(request(backend, { method: "POST", token, signal: active.signal, body: { provider: "openai", messages: [...history, { role: "user", content: question }], shareRecords: share.checked, context } }));
+      const result = await wait(request(backend, { method: "POST", token, signal: active.signal, body: { provider: "openai", messages: [...history, { role: "user", content: question }], shareRecords: share.checked, context, interactive: true, photos: selectedPhotos, actionCatalog: catalog.data } }));
       if (version !== generation || getUser()?.uid !== user.uid) return;
-      if (typeof result.reply !== "string" || !result.reply.trim()) throw new Error("暂未收到回答，请重试。");
+      const parsed = parseAssistantResponse({ reply: result.reply, actions: result.actions || [] });
+      const proposals = parsed.actions.map(action => {
+        try { const change = prepareAssistantAction(action, catalog); if (change.category === "meal" && change.operation === "create" && selectedPhotos.length) change.after.photos = selectedPhotos; return change; }
+        catch (error) { return { state: "invalid", error: error.message }; }
+      });
       const source = context ? `${new Date(context.snapshot.generatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 读取 · ${context.range.startDate} — ${context.range.endDate} · ${context.summarized ? "健康记录摘要" : "健康记录"}${context.foodCatalog?.count ? ` · 常吃食物 ${context.foodCatalog.count} 种` : ""}` : "";
-      messages.push({ role: "user", content: question }, { role: "assistant", content: result.reply.slice(0, 6000), source: [source, result.incomplete || result.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
+      messages.push({ role: "user", content: question, photos: selectedPhotos, photoIds: pending.photoIds }, { role: "assistant", content: parsed.reply.slice(0, 6000), proposals, actionNotice: proposals.length ? "包含待确认的记录变更；重新打开后请重新提问以核对最新记录。" : "", source: [source, result.incomplete || parsed.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
     } catch (error) {
       if (version !== generation) return;
       if (pending) pending.state = "failed";
       if (!input.value) { input.value = question; resizeInput(); }
+      if (selectedPhotos.length) { attachments = selectedPhotos; renderAttachments(); }
       verificationVisible = error.code === "EMAIL_VERIFICATION_REQUIRED" && typeof verifyEmail === "function";
       if (plan && error.code === "PLAN_AUTH_REQUIRED") { connection = "disconnected"; checkedAt = 0; }
       showError(active.signal.aborted ? active.signal.reason === "user" ? "已停止回答，问题仍保留在输入框中。" : "等待超时，问题已保留，请重试。" : verificationVisible ? "请先验证 App 登录邮箱，再使用助手。" : error.message || "发送失败，请稍后重试。", !verificationVisible);
@@ -229,6 +261,33 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   root.addEventListener("click", event => { if (!event.target.closest("#assistantRecordsPanel, #assistantRecordsToggle")) closePanel("assistantRecordsPanel", "assistantRecordsToggle"); });
   root.addEventListener("keydown", event => { if (event.key === "Escape") closePanels(); });
   root.querySelectorAll("[data-ai-prompt]").forEach(button => button.addEventListener("click", () => { input.value = button.dataset.aiPrompt; resizeInput(); input.focus(); }));
+  find("#assistantAttach").addEventListener("click", () => { if (!busy && !photoBusy && !actionBusy) find("#assistantPhotos").click(); });
+  find("#assistantPhotos").addEventListener("change", async event => {
+    const files = [...event.target.files]; event.target.value = ""; if (!files.length) return;
+    if (attachments.length + files.length > 3) { showError("每次最多添加 3 张图片"); return; }
+    const version = generation; photoBusy = true; showError(); setProgress("正在处理图片…"); updateControls();
+    try { const photos = await Promise.all(files.map(file => prepareMealPhoto(file))); if (version === generation) { attachments.push(...photos); renderAttachments(); } }
+    catch (error) { if (version === generation) showError(error.message.replace("食物图片", "图片")); }
+    finally { photoBusy = false; setProgress(""); updateControls(); }
+  });
+  find("#assistantAttachments").addEventListener("click", event => { const button = event.target.closest("[data-remove-photo]"); if (button && !busy && !photoBusy) { attachments.splice(Number(button.dataset.removePhoto), 1); renderAttachments(); } });
+  conversation.addEventListener("click", async event => {
+    const button = event.target.closest("[data-confirm-action], [data-cancel-action]"); if (!button || busy || actionBusy) return;
+    const [index, actionIndex] = (button.dataset.confirmAction || button.dataset.cancelAction).split(":").map(Number);
+    const message = messages[index], change = message?.proposals?.[actionIndex]; if (!change || change.state !== "pending") return;
+    if (button.dataset.cancelAction) { change.state = "cancelled"; message.actionNotice = "有变更已取消；未执行的变更重新打开后需重新提问。"; saveConversation(); renderMessages(); return; }
+    const user = getUser(), version = generation; if (!user) { showError("请先登录 App"); return; }
+    actionBusy = true; showError(); updateControls(); renderMessages();
+    try {
+      await executeAssistantAction(storage, change, { uid: user.uid, getUser });
+      if (version !== generation || getUser()?.uid !== user.uid) return;
+      const label = { create: "新增", update: "修改", delete: "删除" }[change.operation];
+      message.actionNotice = (message.actionNotice?.startsWith("已确认") ? message.actionNotice + "；" : "已确认：") + label + ACTION_LABELS[change.category] + " " + describeAssistantRecord(change.category, change.after || change.before, change.date);
+      message.content += `\n\n> 已确认${label}${ACTION_LABELS[change.category]}。`;
+      saveConversation(); onRecordsChanged();
+    } catch (error) { if (version === generation) change.error = error.message; }
+    finally { actionBusy = false; updateControls(); renderMessages(); }
+  });
   conversation.addEventListener("click", async event => {
     const button = event.target.closest("[data-copy-answer]"); if (!button) return;
     const message = messages[Number(button.dataset.copyAnswer)]; if (!message || message.role !== "assistant") return;

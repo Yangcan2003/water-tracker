@@ -14,7 +14,7 @@ export async function assistantRequest(backend, { method = "GET", token, body, s
   const origin = normalizeBackend(backend);
   if (!origin && Capacitor.isNativePlatform()) throw new Error("助手暂时无法使用，请稍后重试。");
   const url = `${origin}/api/ai`;
-  const headers = { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body?.task === "meal-nutrition" ? { "X-AI-Task": "meal-nutrition" } : {}) };
+  const headers = { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body?.task === "meal-nutrition" ? { "X-AI-Task": "meal-nutrition" } : body?.interactive ? { "X-AI-Task": "assistant" } : {}) };
   let status, data;
   if (Capacitor.isNativePlatform()) {
     checkAborted(signal);

@@ -1,17 +1,21 @@
-const esc = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+import MarkdownIt from "markdown-it";
+const markdown = new MarkdownIt({ html: false, breaks: true, linkify: false });
+// A model answer must never load remote tracking images or execute raw HTML.
+markdown.renderer.rules.image = (tokens, index) => markdown.utils.escapeHtml(tokens[index].content || "图片");
+const linkOpen = markdown.renderer.rules.link_open || ((tokens, index, options, env, renderer) => renderer.renderToken(tokens, index, options));
+markdown.renderer.rules.link_open = (tokens, index, options, env, renderer) => {
+  tokens[index].attrSet("rel", "noopener noreferrer");
+  tokens[index].attrSet("target", "_blank");
+  return linkOpen(tokens, index, options, env, renderer);
+};
+markdown.renderer.rules.table_open = () => '<div class="assistant-table-scroll" role="region" aria-label="回答中的表格" tabindex="0"><table>';
+markdown.renderer.rules.table_close = () => '</table></div>';
 
 export function formatAssistantText(value) {
-  const inline = text => esc(text).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
-  const output = []; let list = [], kind = "";
-  const flush = () => { if (list.length) output.push(`<${kind}>${list.map(item => `<li>${inline(item)}</li>`).join("")}</${kind}>`); list = []; kind = ""; };
-  for (const line of String(value).split("\n")) {
-    const match = line.match(/^([-*] |\d+[.)、] )(.+)$/);
-    if (match) { const next = /^[-*] /.test(line) ? "ul" : "ol"; if (kind && kind !== next) flush(); kind = next; list.push(match[2]); continue; }
-    flush();
-    if (!line.trim()) continue;
-    output.push(/^#{1,3} /.test(line) ? `<h3>${inline(line.replace(/^#{1,3} /, ""))}</h3>` : `<p>${inline(line)}</p>`);
-  }
-  flush(); return output.join("");
+  // Some old answers separate every table row with a blank line. Repair only
+  // adjacent pipe rows; keep ordinary paragraph boundaries intact.
+  const source = String(value).replace(/(\|[^\n]*\|)[\t ]*\n[\t ]*\n(?=[\t ]*\|[^\n]*\|)/g, "$1\n");
+  return markdown.render(source);
 }
 
 // Native bridges and cache reads can ignore AbortSignal. Settle the UI deadline
