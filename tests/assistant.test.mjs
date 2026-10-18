@@ -166,3 +166,23 @@ test("worker serves only the AI route and supports native/web preflight without 
   const response = await worker.fetch(new Request("https://test.invalid/api/ai", { method: "OPTIONS" }), env);
   assert.equal(response.status, 204); assert.match(response.headers.get("Access-Control-Allow-Headers"), /Authorization/);
 });
+
+
+test("the latest food catalog reaches the model after old missing-data replies, and sharing remains mandatory", async () => {
+  const food = { id: "ref", name: "测试冰烤薯", aliases: "测试冰薯", servingAmount: 100, servingUnit: "g", kcal: 100, carbsG: 23, proteinG: 1, fatG: 0, note: "测试营养表" };
+  const context = buildHealthContext([], { profile: { foodCatalog: [food] }, categories: ["meal"], rangeDays: 1, compact: true, now: new Date(2026, 9, 18) });
+  let payload;
+  const messages = [{ role: "user", content: "能看到冰烤薯吗" }, { role: "assistant", content: "之前的快照没有冰烤薯营养信息" }, { role: "user", content: "按保存的数值算108g" }];
+  const response = await handleAI(request(body({ shareRecords: true, context, messages })), env, async (url, options) => {
+    if (url.includes("identitytoolkit")) return identity("test-user");
+    payload = JSON.parse(options.body); return model("按本轮常吃食物参考计算");
+  });
+  assert.equal(response.status, 200);
+  assert.match(payload.input.at(-2).content, /foodCatalog/);
+  assert.match(payload.input.at(-2).content, /测试冰烤薯/);
+  assert.match(payload.input.at(-2).content, /"servingAmount":100/);
+  assert.match(payload.input.at(-2).content, /"carbsG":23/);
+  assert.equal(payload.input.at(-1).content, "按保存的数值算108g");
+  assert.match(payload.instructions, /它不是当天已经吃掉的食物/);
+  assert.throws(() => validateChat(body({ shareRecords: false, context })), /附带/);
+});

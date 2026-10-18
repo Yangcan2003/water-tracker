@@ -43,4 +43,4 @@ createServer(async (incoming, outgoing) => {
     outgoing.setHeader("Content-Type", types[file.split(".").at(-1)] || "application/octet-stream");
     outgoing.end(await readFile(`${directory}${file}`));
   } catch { outgoing.writeHead(404).end(); }
-}).listen(4188, "127.0.0.1", () => console.log("AI QA at http://127.0.0.1:4188 · mocked identity/model, no cloud traffic"));
+}).listen(Number(process.env.QA_PORT) || 4188, "127.0.0.1", () => console.log(`AI QA at http://127.0.0.1:${Number(process.env.QA_PORT) || 4188} · mocked identity/model, no cloud traffic`));

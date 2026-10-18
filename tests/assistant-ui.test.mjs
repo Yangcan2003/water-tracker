@@ -70,3 +70,39 @@ test("all-history compression preserves today's nutrition and totals from every 
   assert.equal(context.todayNutrition.fatG, 85);
   assert.equal(context.days.reduce((sum, day) => sum + day.meal.nutrition.fatG, 0), 1585);
 });
+
+
+test("health assistant includes current favorite foods independently of meal dates and never counts them as intake", () => {
+  const favorite = { id: "private-food-id", name: "测试冰烤薯", aliases: "测试品牌冰薯", servingAmount: 100, servingUnit: "g", kcal: 100, carbsG: 23, proteinG: 1, fatG: 0, note: "营养表每100g", token: "private-food-token" };
+  const profile = { foodCatalog: [favorite], email: "private-email" };
+  const options = { profile, categories: ["meal"], rangeDays: 1, now: new Date(2026, 9, 18), compact: true };
+  const first = buildHealthContext([], options);
+  assert.equal(first.foodCatalog.count, 1);
+  assert.equal(first.foodCatalog.entries[0].name, "测试冰烤薯");
+  assert.equal(first.foodCatalog.entries[0].servingAmount, 100);
+  assert.equal(first.foodCatalog.entries[0].servingUnit, "g");
+  assert.equal(first.foodCatalog.entries[0].kcal, 100);
+  assert.equal(first.foodCatalog.entries[0].fatG, 0);
+  assert.equal(first.todayNutrition.kcal, null);
+  assert.equal(first.todayNutrition.entries, 0);
+  assert.ok(!JSON.stringify(first).includes("private-"));
+  profile.foodCatalog[0].carbsG = 25;
+  assert.equal(buildHealthContext([], options).foodCatalog.entries[0].carbsG, 25);
+  assert.equal(first.foodCatalog.entries[0].carbsG, 23);
+  assert.equal(buildHealthContext([], { ...options, categories: ["water"] }).foodCatalog, undefined);
+  assert.equal(buildHealthContext([], { ...options, profile: { foodCatalog: [] } }).foodCatalog.count, 0);
+});
+
+test("large all-history snapshots retain every favorite food, unit, alias, note and nutrient within the context budget", () => {
+  const foods = Array.from({ length: 50 }, (_, i) => ({ id: `food-${i}`, name: `${i}`.padEnd(60, "食"), aliases: "别".repeat(100), note: "注".repeat(80), servingAmount: 100, servingUnit: "g", kcal: 123.4, carbsG: 23.4, proteinG: 12.3, fatG: 3.4 }));
+  const days = Array.from({ length: 500 }, (_, i) => { const date = new Date(2025, 0, i + 1); return { dateKey: date.toISOString().slice(0, 10), mealRecs: [{ name: "历史食物".repeat(30), note: "备注".repeat(80), nutrition: { kcal: 100, carbsG: 10, proteinG: 5, fatG: 3 } }] }; });
+  const context = buildHealthContext(days, { rangeDays: "all", categories: ["meal"], now: new Date(2026, 9, 18), profile: { foodCatalog: foods }, compact: true });
+  assert.ok(JSON.stringify(context).length <= 18000);
+  assert.equal(context.foodCatalog.count, 50);
+  assert.equal(context.foodCatalog.rows.length, 50);
+  for (const [i, row] of context.foodCatalog.rows.entries()) {
+    const reference = Object.fromEntries(context.foodCatalog.columns.map((key, j) => [key, row[j]]));
+    for (const key of context.foodCatalog.columns) assert.equal(reference[key], foods[i][key]);
+  }
+  assert.equal(context.days.reduce((sum, day) => sum + day.meal.nutrition.kcal, 0), 50000);
+});

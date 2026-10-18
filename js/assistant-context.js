@@ -3,6 +3,7 @@ import { measurementHistory } from "./body-measurements.js";
 import { toDateKey } from "./utils.js";
 import { dailyMealNutrition, normalizeMealNutrition } from "./meal-nutrition.js";
 import { nutritionTargets } from "./nutrition-goals.js";
+import { normalizeFoodCatalog } from "./food-catalog.js";
 
 export const ASSISTANT_CATEGORIES = [
   { key: "water", label: "饮水" }, { key: "meal", label: "饮食" }, { key: "workout", label: "训练" },
@@ -61,6 +62,11 @@ export function buildHealthContext(days, { rangeDays = 7, categories = ["water",
   if (selected.includes("meal")) {
     context.todayNutrition = { date: toDateKey(now), ...nutritionSummary(selectedDays.filter(day => day.dateKey === toDateKey(now)).flatMap(day => day.mealRecs || [])) };
     context.dailyNutritionTargetsG = nutritionTargets(profile?.nutritionGoal);
+    const columns = ["name", "aliases", "servingAmount", "servingUnit", "kcal", "carbsG", "proteinG", "fatG", "note"];
+    const foods = normalizeFoodCatalog(profile?.foodCatalog);
+    context.foodCatalog = { count: foods.length, entries: foods.map(food => Object.fromEntries(columns.map(key => [key, food[key]]))),
+      note: "用户当前保存的常吃食物营养参考，不是已食用记录，不受历史日期范围限制。每项数值对应 servingAmount 和 servingUnit；能量为 kcal，三大营养素为 g。若使用 columns/rows 表格，按列名读取行值，所有食物及其份量、营养、别名、备注均完整保留。" };
+
   }
   const selectedMeasurements = measurements.filter(item => inHistoryRange(item.date, range));
   if (selected.includes("body")) {
@@ -68,6 +74,14 @@ export function buildHealthContext(days, { rangeDays = 7, categories = ["water",
     context.bodyMeasurementsOmitted = compact ? 0 : Math.max(0, selectedMeasurements.length - 60);
   }
   if (compact) {
+    // A table removes repeated field names without dropping any saved food.
+    // References must survive history compression, including older/all ranges.
+    if (JSON.stringify(context).length > 18000 && context.foodCatalog?.count) {
+      const columns = Object.keys(context.foodCatalog.entries[0]);
+      const rows = context.foodCatalog.entries.map(food => columns.map(key => food[key]));
+      const { entries, ...metadata } = context.foodCatalog;
+      context.foodCatalog = { ...metadata, columns, rows };
+    }
     if (Number.isFinite(profile?.dailyGoal)) context.dailyWaterGoalMl = profile.dailyGoal;
     // Detailed records are preferred. For large histories, every recorded date
     // contributes to the summary; no older date/category is silently dropped.
