@@ -120,14 +120,25 @@ body[data-section="assistant"].assistant-keyboard .assistant-dock { padding-bott
 .assistant-menu-heading .assistant-icon-button { width: 30px; height: 30px; }
 .assistant-account-menu p { margin: 8px 0; color: var(--theme-muted); font-size: 12px; overflow-wrap: anywhere; }
 .assistant-account-menu > button, .assistant-account-menu #assistantPlanAccount > button, .assistant-account-menu a { display: block; min-height: 44px; padding: 12px 0; text-align: left; border: 0; background: transparent; color: var(--theme-text); font-size: 13px !important; text-decoration: none; }
-.assistant-records-panel { position: absolute; bottom: calc(100% - 2px); left: 16px; right: 16px; max-height: min(320px, 55vh); overflow: auto; }
-.assistant-records-panel strong { font-size: 14px; }
-.assistant-records-panel p { font-size: 12px; line-height: 1.75; color: var(--theme-muted); margin: 9px 0 15px; }
-.assistant-records-panel > div { display: flex; align-items: center; justify-content: space-between; margin-bottom: 17px; font-size: 12px; }
-.assistant-records-panel select { max-width: 150px; min-height: 38px; padding: 6px 10px; border: 1px solid var(--theme-line); border-radius: 10px; background: var(--theme-bg); color: var(--theme-text); font-size: 12px !important; }
-.assistant-share { display: flex; align-items: center; justify-content: space-between; flex-direction: row-reverse; gap: 15px; font-size: 12px; min-height: 32px; }
-.assistant-share input { width: 18px; height: 18px; accent-color: var(--theme-accent); margin: 0; }
-.assistant-records-note { margin-bottom: 0 !important; font-size: 10px !important; }
+.assistant-records-panel { position: absolute; bottom: calc(100% + 4px); left: 16px; width: min(370px, calc(100% - 32px)); max-height: min(260px, 55vh); overflow: auto; padding: 12px 16px 15px; }
+.assistant-share { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 44px; cursor: pointer; }
+.assistant-records-heading { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; color: var(--theme-text); }
+.assistant-records-heading svg { width: 18px !important; height: 18px !important; color: var(--theme-muted); }
+.assistant-share input { position: absolute; right: 0; top: 0; width: 44px; height: 100%; margin: 0; opacity: 0; z-index: 1; cursor: pointer; }
+.assistant-switch-track { position: relative; width: 40px; height: 24px; flex-shrink: 0; border-radius: 20px; background: var(--theme-line); pointer-events: none; }
+.assistant-switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--theme-surface); box-shadow: 0 1px 3px #10182820; }
+.assistant-share input:checked + .assistant-switch-track { background: var(--theme-accent); }
+.assistant-share input:checked + .assistant-switch-track::after { transform: translateX(16px); }
+.assistant-share input:focus-visible + .assistant-switch-track { outline: 2px solid var(--theme-accent); outline-offset: 3px; }
+.assistant-share:has(input:disabled) { opacity: .45; cursor: default; }
+.assistant-record-ranges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; min-width: 0; padding: 4px; margin: 9px 0 0; border: 0; border-radius: 12px; background: var(--theme-bg); }
+.assistant-record-ranges label { position: relative; min-width: 0; cursor: pointer; }
+.assistant-record-ranges input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.assistant-record-ranges label > span { display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 6px 2px; border-radius: 9px; font-size: 12px; color: var(--theme-muted); }
+.assistant-record-ranges input:checked + span { color: var(--theme-text); background: var(--theme-surface); box-shadow: 0 1px 5px #1018280d; font-weight: 600; }
+.assistant-record-ranges input:focus-visible + span { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
+.assistant-record-ranges:disabled { opacity: .45; }
+.assistant-records-note { margin: 10px 0 0; font-size: 11px; line-height: 1.6; color: var(--theme-muted); }
 .assistant-history-panel { position: absolute; inset: 60px 0 0; z-index: 4; display: flex; flex-direction: column; min-height: 0; padding: 12px 22px 20px; background: var(--theme-bg); }
 .assistant-history-panel .assistant-menu-heading { flex-shrink: 0; }
 .assistant-history-note, .assistant-history-empty { margin: 8px 0 20px; color: var(--theme-muted); font-size: 11px; }
