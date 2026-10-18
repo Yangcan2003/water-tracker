@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="meta.css?v=19" />
     <link rel="stylesheet" href="history.css?v=2" />
     <link rel="stylesheet" href="themes.css?v=3" />
-    <link rel="stylesheet" href="meals.css?v=6" />
+    <link rel="stylesheet" href="meals.css?v=7" />
     <link rel="stylesheet" href="assistant.css?v=9" />
     <link rel="stylesheet" href="intake.css?v=4" />
     <link rel="stylesheet" href="workout.css?v=1" />
@@ -549,9 +549,10 @@
           <label for="foodName">食物名称</label><input id="foodName" class="text-field" maxlength="60" placeholder="例如：某品牌原味燕麦片" required />
           <label for="foodAliases">品牌或别名 <small>选填</small></label><input id="foodAliases" class="text-field" maxlength="100" placeholder="记录时会用到的简称或品牌" />
           <fieldset class="food-serving-fields"><legend>以下营养数值对应的份量</legend><div><input id="foodAmount" type="number" min="0.1" max="10000" step="0.1" inputmode="decimal" value="100" aria-label="计量数量" required /><select id="foodUnit" aria-label="计量单位"><option value="g">g</option><option value="ml">ml</option><option value="份">份</option><option value="个">个</option><option value="片">片</option><option value="杯">杯</option><option value="袋">袋</option></select></div><p>例如：包装标注每 100 g，就填 100 g；每袋标注，就填 1 袋。</p></fieldset>
-          <div class="food-nutrient-fields"><label for="foodValuekcal">热量<span><input id="foodValuekcal" type="number" min="0" max="20000" step="0.1" inputmode="decimal" placeholder="填写数值" required /><small>kcal</small></span></label><label for="foodValuecarbsG">碳水<span><input id="foodValuecarbsG" type="number" min="0" max="5000" step="0.1" inputmode="decimal" placeholder="填写数值" required /><small>g</small></span></label><label for="foodValueproteinG">蛋白质<span><input id="foodValueproteinG" type="number" min="0" max="5000" step="0.1" inputmode="decimal" placeholder="填写数值" required /><small>g</small></span></label><label for="foodValuefatG">脂肪<span><input id="foodValuefatG" type="number" min="0" max="5000" step="0.1" inputmode="decimal" placeholder="填写数值" required /><small>g</small></span></label></div>
+          <div class="food-nutrient-fields"><label for="foodValuekcal">热量<span><input id="foodValuekcal" type="number" min="0" max="20000" step="0.1" inputmode="decimal" placeholder="填写数值" aria-describedby="foodEnergyConversion" required /><select id="foodEnergyUnit" aria-label="热量单位"><option value="kcal">kcal</option><option value="kJ">kJ</option></select></span></label><label for="foodValuecarbsG">碳水<span><input id="foodValuecarbsG" type="number" min="0" max="5000" step="0.1" inputmode="decimal" placeholder="填写数值" required /><small>g</small></span></label><label for="foodValueproteinG">蛋白质<span><input id="foodValueproteinG" type="number" min="0" max="5000" step="0.1" inputmode="decimal" placeholder="填写数值" required /><small>g</small></span></label><label for="foodValuefatG">脂肪<span><input id="foodValuefatG" type="number" min="0" max="5000" step="0.1" inputmode="decimal" placeholder="填写数值" required /><small>g</small></span></label></div>
+          <p id="foodEnergyConversion" class="food-energy-conversion" role="status" hidden></p>
           <label for="foodNote">规格与做法 <small>选填</small></label><input id="foodNote" class="text-field" maxlength="80" placeholder="例如：熟重、每袋40g、无糖原味" />
-          <p class="food-library-help">请填写热量 kcal 和营养素 g。包装若只标 kJ，先换算为 kcal（kJ ÷ 4.184）。识别时，这些数据会作为食物参考发送至 OpenAI。</p>
+          <p class="food-library-help">热量可选择 kcal 或 kJ，选择 kJ 后会自动换算为 kcal 保存（1 kcal = 4.184 kJ），营养素填写 g。识别时，这些数据会作为食物参考发送至 OpenAI。</p>
           <p id="foodCatalogMessage" class="food-form-message" role="status"></p>
           <button id="foodCatalogDelete" class="food-delete-button" type="button" hidden>删除这项食物</button>
         </div>
