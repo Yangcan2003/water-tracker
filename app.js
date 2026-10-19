@@ -21,6 +21,7 @@ import { historyDetailHTML } from "./js/history-detail.js";
 import { prepareAvatar } from "./js/avatar.js";
 import { MealTimeDraft, MAX_MEAL_PHOTOS, prepareMealPhoto, isMealPhoto } from "./js/meals.js";
 import { mealIcon, mealEntryHTML, mealRecordDate } from "./js/meal-diary.js";
+import { EXTRA_NUTRIENTS } from "./js/food-catalog.js";
 import { NUTRITION_FIELDS, normalizeMealNutrition, dailyMealNutrition } from "./js/meal-nutrition.js";
 import { analyzeMeal } from "./js/meal-nutrition-client.js";
 import { createMealEditorKeyboard } from "./js/meal-editor-keyboard.js";
@@ -148,6 +149,7 @@ const assistantPage = createAssistantPage(E.assistantPanel, {
   login: () => { setAuthMode("login"); E.authDialog.showModal(); },
   onRecordsChanged: () => {
     dailyGoal = storage.getCachedProfile().dailyGoal || 2000;
+    foodCatalogPage.render();
     historyPage.reset();
     void loadDay();
   },
@@ -327,7 +329,7 @@ E.mealAIConnect?.addEventListener("click", async () => {
   catch (error) { if (draft === mealDraft) E.mealNutritionStatus.textContent = toFriendlyError(error); }
   finally { draft.connecting = false; E.mealAIConnect.disabled = false; renderMealPhotoDraft(); }
 });
-["Kcal", "Carbs", "Protein", "Fat"].forEach(name => E[`meal${name}Input`]?.addEventListener("input", () => {
+[...["Kcal", "Carbs", "Protein", "Fat"].map(name => `meal${name}Input`), ...EXTRA_NUTRIENTS.map(field => `mealExtra${field.key}`)].forEach(id => document.getElementById(id)?.addEventListener("input", () => {
   if (mealDraft?.nutrition) mealDraft.nutrition.source = "manual";
 }));
 document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureMealsToday(); });
@@ -1178,7 +1180,7 @@ function renderMealPhotoDraft() {
   [E.mealNameInput, E.mealTimeInput].forEach(input => { input.disabled = mealSaving; });
   E.mealAnalyzeButton.disabled = busy || !(mealDraft.photos.length || E.mealNameInput.value.trim());
   E.mealAnalyzeLabel.textContent = mealDraft.analyzing ? "正在识别…" : mealDraft.nutrition ? "重新识别热量与营养" : "识别热量与营养";
-  for (const name of ["Kcal", "Carbs", "Protein", "Fat"]) E[`meal${name}Input`].disabled = busy || !mealDraft.nutrition;
+  for (const id of MEAL_NUTRITION_INPUTS) document.getElementById(id).disabled = busy || !mealDraft.nutrition;
   E.mealNutritionClear.disabled = busy;
   E.mealSaveButton.textContent = mealSaving ? "正在保存…" : mealDraft.processing ? "正在处理图片…" : mealDraft.id ? "保存修改" : "保存饮食记录";
 }
@@ -1268,6 +1270,8 @@ function renderMeals() {
   [["mealDailyKcal", "kcal"], ["mealDailyCarbs", "carbsG"], ["mealDailyProtein", "proteinG"], ["mealDailyFat", "fatG"]].forEach(([id, key]) => {
     E[id].textContent = mealDayLoading || totals[key] === null ? "—" : totals[key].toLocaleString("zh-CN", { maximumFractionDigits: 1 });
   });
+  document.getElementById("mealDailyMore").hidden = mealDayLoading || !totals.entries;
+  document.getElementById("mealDailyExtra").innerHTML = EXTRA_NUTRIENTS.map(field => `<div><dt>${field.label}</dt><dd>${totals[field.key] == null ? "—" : totals[field.key]} <small>${field.unit}</small><small> · ${totals.nutrientCoverage[field.key]} / ${totals.entries} 条</small></dd></div>`).join("");
   E.mealDailyCoverage.textContent = mealDayLoading ? "正在读取…" : !totals.entries ? "尚无记录" : `已计入 ${totals.counted} / ${totals.entries} 条`;
   E.mealDailyNote.textContent = mealDayLoading ? "正在读取已保存的营养记录…" : !totals.entries ? "添加饮食并识别营养后，显示当天的摄入合计。"
     : !totals.counted ? "目前记录尚无营养数据；可在编辑记录中 AI 识别。"
@@ -1281,23 +1285,25 @@ function renderMeals() {
   E.mealDayList.innerHTML = rows.map(mealEntryHTML).join("");
 }
 
-const MEAL_NUTRITION_INPUTS = ["mealKcalInput", "mealCarbsInput", "mealProteinInput", "mealFatInput"];
+const MEAL_NUTRITION_INPUTS = ["mealKcalInput", "mealCarbsInput", "mealProteinInput", "mealFatInput", ...EXTRA_NUTRIENTS.map(field => `mealExtra${field.key}`)];
 function renderMealNutrition() {
   if (!mealDraft) return;
   const nutrition = mealDraft.nutrition;
   E.mealNutritionResult.hidden = !nutrition;
   MEAL_NUTRITION_INPUTS.forEach((id, index) => {
-    E[id].value = nutrition ? nutrition[NUTRITION_FIELDS[index].key] : "";
-    E[id].required = Boolean(nutrition);
-    E[id].disabled = !nutrition;
+    const input = document.getElementById(id);
+    input.value = nutrition?.[NUTRITION_FIELDS[index].key] ?? "";
+    input.required = Boolean(nutrition) && !NUTRITION_FIELDS[index].optional;
+    input.disabled = !nutrition;
   });
+  document.getElementById("mealExtraNutrition").open = EXTRA_NUTRIENTS.some(field => nutrition?.[field.key] != null);
   E.mealNutritionAssumption.textContent = nutrition ? [nutrition.portion, nutrition.note].filter(Boolean).join("；") : "";
   E.mealNutritionStatus.textContent = nutrition ? "已识别这一餐的总营养，可检查和修改后保存。" : "填写食物文字或添加图片，即可估算热量、碳水、蛋白质和脂肪。";
 }
 function readMealNutrition() {
   if (!mealDraft?.nutrition) return null;
   const value = { ...mealDraft.nutrition };
-  MEAL_NUTRITION_INPUTS.forEach((id, index) => { value[NUTRITION_FIELDS[index].key] = E[id].value.trim() ? Number(E[id].value) : null; });
+  MEAL_NUTRITION_INPUTS.forEach((id, index) => { const input = document.getElementById(id); value[NUTRITION_FIELDS[index].key] = input.value.trim() ? Number(input.value) : null; });
   return normalizeMealNutrition(value);
 }
 function invalidateMealNutrition() {

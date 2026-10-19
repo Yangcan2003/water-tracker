@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { parseMealAnalysis, normalizeMealNutrition, mealAnalysisInput, validateMealAnalysis } from "../js/meal-nutrition.js";
+import { parseMealAnalysis, normalizeMealNutrition, dailyMealNutrition, mealAnalysisInput, validateMealAnalysis } from "../js/meal-nutrition.js";
 import { analyzeMealPhotos } from "../js/meal-nutrition-client.js";
 import { createPlanClient } from "../js/chatgpt-plan-client.js";
 import { handleAI } from "../server/ai-service.js";
@@ -71,11 +71,21 @@ test("daily totals sum saved estimates and manual values with missing nutrition 
     { nutrition: { kcal: 200.2, carbsG: 25.1, proteinG: 10.2, fatG: 5.3, source: "manual" } },
     { nutrition: null }, { nutrition: { kcal: -1, carbsG: 0, proteinG: 0, fatG: 0 } },
   ];
-  assert.deepEqual(dailyMealNutrition(records), { kcal: 780.2, carbsG: 87.1, proteinG: 45.2, fatG: 26.3, entries: 4, counted: 2, missing: 2 });
-  assert.deepEqual(dailyMealNutrition([]), { kcal: null, carbsG: null, proteinG: null, fatG: null, entries: 0, counted: 0, missing: 0 });
+  assert.deepEqual(dailyMealNutrition(records), { kcal: 780.2, carbsG: 87.1, proteinG: 45.2, fatG: 26.3, fiberG: null, sodiumMg: null, saturatedFatG: null, sugarsG: null, addedSugarsG: null, nutrientCoverage: { fiberG: 0, sodiumMg: 0, saturatedFatG: 0, sugarsG: 0, addedSugarsG: 0 }, entries: 4, counted: 2, missing: 2 });
+  assert.deepEqual(dailyMealNutrition([]), { kcal: null, carbsG: null, proteinG: null, fatG: null, fiberG: null, sodiumMg: null, saturatedFatG: null, sugarsG: null, addedSugarsG: null, nutrientCoverage: { fiberG: 0, sodiumMg: 0, saturatedFatG: 0, sugarsG: 0, addedSugarsG: 0 }, entries: 0, counted: 0, missing: 0 });
   assert.equal(dailyMealNutrition([{ nutrition: null }]).kcal, null);
   const zero = dailyMealNutrition([{ nutrition: { kcal: 0, carbsG: 0, proteinG: 0, fatG: 0 } }]);
   assert.equal(zero.kcal, 0); assert.equal(zero.counted, 1);
+});
+
+test("extra nutrient totals sum only known amounts and report their own coverage", () => {
+  const base = { kcal: 100, carbsG: 20, proteinG: 4, fatG: 3 };
+  const totals = dailyMealNutrition([{ nutrition: { ...base, fiberG: 2, sodiumMg: 0 } }, { nutrition: { ...base, fiberG: 3, sugarsG: 5 } }, { nutrition: base }, {}]);
+  assert.equal(totals.fiberG, 5); assert.equal(totals.sodiumMg, 0);
+  assert.equal(totals.sugarsG, 5); assert.equal(totals.addedSugarsG, null);
+  assert.deepEqual(totals.nutrientCoverage, { fiberG: 2, sodiumMg: 1, saturatedFatG: 0, sugarsG: 1, addedSugarsG: 0 });
+  assert.equal(totals.entries, 4); assert.equal(totals.counted, 3);
+  assert.equal(normalizeMealNutrition(base).fiberG, null);
 });
 
 test("daily totals honor the local record date and recalculate when a record is edited or removed", async () => {

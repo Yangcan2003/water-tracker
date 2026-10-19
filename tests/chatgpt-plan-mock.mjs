@@ -11,6 +11,12 @@ export const chatGPTPlan = {
     if (body.messages.at(-1).content.includes("额度测试")) throw Object.assign(new Error("ChatGPT 会员用量已达当前限制，请稍后重试或在 ChatGPT 中查看用量"), { code: "PLAN_LIMIT" });
     await new Promise(resolve => setTimeout(resolve, 400));
     const question = body.messages.at(-1).content;
+    if (question.includes("常吃新增测试")) return { reply: `已根据本次 ${body.photos?.length || 0} 张图片整理食物库条目（模拟识别）。请核对每 100 g 的数值，确认后保存；这不会记入今天的饮食。`, actions: [{ operation: "create", category: "food", date: null, time: null, ref: null, values: { name: "测试原味燕麦", servingAmount: 100, servingUnit: "g", kcal: 380, carbsG: 60, proteinG: 13, fatG: 7, fiberG: 8, sodiumMg: 12, saturatedFatG: 1, sugarsG: 2, addedSugarsG: null, note: "模拟标签；添加糖未标注", aliases: "测试燕麦" } }] };
+    if (question.includes("常吃修改测试")) {
+      const target = body.actionCatalog.records.find(record => record.category === "food" && record.values.name === "测试原味燕麦");
+      return { reply: "请核对钠含量的修改，其他营养值保留。", actions: target ? [{ operation: "update", category: "food", ref: target.ref, values: { sodiumMg: 20 } }] : [] };
+    }
+    if (question.includes("营养记录测试")) return { reply: "请核对这餐的营养。", actions: [{ operation: "create", category: "meal", values: { mealType: "lunch", name: "测试燕麦50g", kcal: 190, carbsG: 30, proteinG: 6.5, fatG: 3.5, fiberG: 4, sodiumMg: 6, saturatedFatG: 0.5, sugarsG: 1, addedSugarsG: null } }] };
     if (question.includes("表格测试")) return { reply: "晚餐已保存的脂肪合计约 **33.3 g**。下面是估算拆分：\n\n| 来源 | 脂肪 |\n\n|---|---:|\n\n| 5 个鸡蛋 | 约 24 g |\n\n| 牛油果油 | 约 9 g |\n\n| 土豆 | 约 0.3 g |\n\n| 合计 | **约 33.3 g** |\n\n这些是模拟数值，用于验证排版。\n\n### 需要区分\n1. 食物中的脂肪\n2. 烹饪油的脂肪\n\n> 估算不等于精确测量。", actions: [] };
     if (question.includes("图片测试")) return { reply: `已收到 **${body.photos?.length || 0} 张图片**（模拟识别）。图片只用于本次对话，没有自动添加健康记录。`, actions: [] };
     if (question.includes("新增测试")) return { reply: "请核对这条饮水记录，再确认保存。", actions: [{ operation: "create", category: "water", date: body.actionCatalog.localDate, time: "12:30", ref: null, values: { amount: 250 } }] };

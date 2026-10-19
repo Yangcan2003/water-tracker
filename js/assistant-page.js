@@ -6,6 +6,7 @@ import { formatAssistantText, awaitAssistantOperation } from "./assistant-ui.js"
 import { createAssistantKeyboard } from "./assistant-keyboard.js";
 import { createAssistantHistory } from "./assistant-history.js";
 import { createForegroundDeadline } from "./assistant-deadline.js";
+import { FOOD_NUTRIENTS, foodServingLabel } from "./food-catalog.js";
 import { prepareMealPhoto, isMealPhoto } from "./meals.js";
 import { parseAssistantResponse } from "./assistant-protocol.js";
 import { ACTION_LABELS, buildActionCatalog, prepareAssistantAction, describeAssistantRecord, executeAssistantAction } from "./assistant-actions.js";
@@ -80,8 +81,22 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     return `<div class="assistant-proposals">${message.proposals.map((change, actionIndex) => {
       if (change.state === "invalid") return `<p class="assistant-action-notice">${esc(change.error)}</p>`;
       const label = { create: "新增", update: "修改", delete: "删除" }[change.operation];
-      return `<section class="assistant-proposal" aria-label="${label}${ACTION_LABELS[change.category]}"><strong>${label}${ACTION_LABELS[change.category]}</strong><dl>${change.before ? `<dt>当前</dt><dd>${esc(describeAssistantRecord(change.category, change.before, change.date))}</dd>` : ""}${change.after ? `<dt>保存为</dt><dd>${esc(describeAssistantRecord(change.category, change.after, change.date))}</dd>` : ""}</dl>${change.operation === "delete" && change.state === "pending" ? '<p>确认后将删除这条记录。</p>' : ""}${change.state === "pending" ? `<div class="assistant-proposal-buttons"><button type="button" data-confirm-action="${index}:${actionIndex}" ${busy || actionBusy ? "disabled" : ""}>确认${label}</button><button type="button" data-cancel-action="${index}:${actionIndex}" ${busy || actionBusy ? "disabled" : ""}>取消</button></div>` : `<p role="status">${change.state === "applied" ? "已保存到 App" : change.state === "applying" ? "正在保存…" : "已取消"}</p>`}${change.error ? `<p role="alert">${esc(change.error)}</p>` : ""}</section>`;
+      const review = change.category === "food" ? foodReview(change) : `<dl>${change.before ? `<dt>当前</dt><dd>${esc(describeAssistantRecord(change.category, change.before, change.date))}</dd>` : ""}${change.after ? `<dt>保存为</dt><dd>${esc(describeAssistantRecord(change.category, change.after, change.date))}</dd>` : ""}</dl>`;
+      return `<section class="assistant-proposal" aria-label="${label}${ACTION_LABELS[change.category]}"><strong>${label}${ACTION_LABELS[change.category]}</strong>${review}${change.operation === "delete" && change.state === "pending" ? '<p>确认后将删除这条记录。</p>' : ""}${change.state === "pending" ? `<div class="assistant-proposal-buttons"><button type="button" data-confirm-action="${index}:${actionIndex}" ${busy || actionBusy ? "disabled" : ""}>确认${label}</button><button type="button" data-cancel-action="${index}:${actionIndex}" ${busy || actionBusy ? "disabled" : ""}>取消</button></div>` : `<p role="status">${change.state === "applied" ? "已保存到 App" : change.state === "applying" ? "正在保存…" : "已取消"}</p>`}${change.error ? `<p role="alert">${esc(change.error)}</p>` : ""}</section>`;
     }).join("")}</div>`;
+  }
+  function foodReview(change) {
+    const food = change.after || change.before, amount = (value, unit = "") => value == null ? "未知" : `${value}${unit ? ` ${unit}` : ""}`;
+    const heading = `<div class="assistant-food-heading"><b>${esc(food.name)}</b><span>${esc(foodServingLabel(food))}</span></div>`;
+    if (change.before && change.after) {
+      const before = change.before, after = change.after;
+      const columns = [
+        ["名称", before.name, after.name], ["品牌/别名", before.aliases, after.aliases], ["计量份量", foodServingLabel(before), foodServingLabel(after)],
+        ...FOOD_NUTRIENTS.map(field => [field.label, amount(before[field.key], field.unit), amount(after[field.key], field.unit)]), ["备注", before.note, after.note],
+      ].filter(([, oldValue, newValue]) => oldValue !== newValue);
+      return heading + `<table class="assistant-food-changes"><thead><tr><th>修改项</th><th>当前</th><th>保存为</th></tr></thead><tbody>${columns.map(([name, oldValue, newValue]) => `<tr><th>${esc(name)}</th><td>${esc(oldValue || "未填写")}</td><td>${esc(newValue || "未填写")}</td></tr>`).join("")}</tbody></table>`;
+    }
+    return heading + `<dl class="assistant-food-nutrients">${FOOD_NUTRIENTS.map(field => `<div><dt>${field.label}</dt><dd>${esc(amount(food[field.key], field.unit))}</dd></div>`).join("")}</dl>${food.aliases || food.note ? `<p>${esc([food.aliases, food.note].filter(Boolean).join(" · "))}</p>` : ""}`;
   }
   function renderMessages() {
     const content = [...messages, ...(pending ? [{ role: "user", content: pending.question, photos: pending.photos, state: pending.state }] : [])];

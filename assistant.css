@@ -98,6 +98,17 @@ body[data-section="assistant"].assistant-keyboard .assistant-dock { padding-bott
 .assistant-proposal-buttons { display: flex; gap: 10px; margin-top: 14px; }
 .assistant-proposal-buttons button { min-height: 40px; padding: 8px 15px; border: 1px solid var(--theme-line); border-radius: 20px; color: var(--theme-text); background: var(--theme-bg); font-size: 13px !important; }
 .assistant-proposal-buttons button:first-child { border-color: var(--theme-text); background: var(--theme-text); color: var(--theme-surface); }
+.assistant-food-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 12px; margin: 14px 0 8px; }
+.assistant-food-heading b { font-size: 14px; }
+.assistant-food-heading span { color: var(--theme-muted); font-size: 11px; }
+.assistant-proposal .assistant-food-nutrients { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 12px 0 0; }
+.assistant-food-nutrients > div { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; min-width: 0; }
+.assistant-food-nutrients dt, .assistant-food-nutrients dd { margin: 0; font-size: 11px; }
+.assistant-food-nutrients dd { color: var(--theme-text); white-space: nowrap; }
+.assistant-food-changes { width: 100%; margin-top: 12px; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+.assistant-food-changes th, .assistant-food-changes td { padding: 8px 4px; border-bottom: 1px solid var(--theme-line); text-align: left; overflow-wrap: anywhere; }
+.assistant-food-changes th { color: var(--theme-muted); font-weight: 400; }
+.assistant-food-changes td:last-child { font-weight: 600; }
 .assistant-records-toggle { display: flex; align-items: center; gap: 5px; min-height: 38px; padding: 5px 8px; margin-left: -5px; border: 0; border-radius: 10px; background: transparent; color: var(--theme-muted); font-size: 11px !important; }
 .assistant-records-toggle[data-enabled="true"] { color: var(--theme-accent); }
 .assistant-records-toggle svg { width: 16px !important; height: 16px !important; }

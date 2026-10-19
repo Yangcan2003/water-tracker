@@ -3,7 +3,7 @@ import { measurementHistory } from "./body-measurements.js";
 import { toDateKey } from "./utils.js";
 import { dailyMealNutrition, normalizeMealNutrition } from "./meal-nutrition.js";
 import { nutritionTargets } from "./nutrition-goals.js";
-import { normalizeFoodCatalog } from "./food-catalog.js";
+import { FOOD_NUTRIENTS, normalizeFoodCatalog } from "./food-catalog.js";
 
 export const ASSISTANT_CATEGORIES = [
   { key: "water", label: "饮水" }, { key: "meal", label: "饮食" }, { key: "workout", label: "训练" },
@@ -23,7 +23,7 @@ function logList(records, map) {
 function mealNutrition(record) {
   const value = normalizeMealNutrition(record.nutrition);
   if (!value) return null;
-  return { kcal: value.kcal, carbsG: value.carbsG, proteinG: value.proteinG, fatG: value.fatG,
+  return { ...Object.fromEntries(FOOD_NUTRIENTS.map(({ key }) => [key, value[key]])),
     portion: text(value.portion), note: text(value.note), source: value.source, estimatedAt: text(value.estimatedAt) };
 }
 function nutritionSummary(records) {
@@ -62,7 +62,9 @@ export function buildHealthContext(days, { rangeDays = 7, categories = ["water",
   if (selected.includes("meal")) {
     context.todayNutrition = { date: toDateKey(now), ...nutritionSummary(selectedDays.filter(day => day.dateKey === toDateKey(now)).flatMap(day => day.mealRecs || [])) };
     context.dailyNutritionTargetsG = nutritionTargets(profile?.nutritionGoal);
-    const columns = ["name", "aliases", "servingAmount", "servingUnit", "kcal", "carbsG", "proteinG", "fatG", "note"];
+    context.units.nutrients = Object.fromEntries(FOOD_NUTRIENTS.map(field => [field.key, field.unit]));
+    context.note += " 五项补充营养允许null，代表未知，不是0。nutrientCoverage是各补充指标有数值的条目数，仅合计已知条目；不足entries时不能当作完整日摄入。钠单位mg，糖和膳食纤维等单位g。";
+    const columns = ["name", "aliases", "servingAmount", "servingUnit", ...FOOD_NUTRIENTS.map(field => field.key), "note"];
     const foods = normalizeFoodCatalog(profile?.foodCatalog);
     context.foodCatalog = { count: foods.length, entries: foods.map(food => Object.fromEntries(columns.map(key => [key, food[key]]))),
       note: "用户当前保存的常吃食物营养参考，不是已食用记录，不受历史日期范围限制。每项数值对应 servingAmount 和 servingUnit；能量为 kcal，三大营养素为 g。若使用 columns/rows 表格，按列名读取行值，所有食物及其份量、营养、别名、备注均完整保留。" };

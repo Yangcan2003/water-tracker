@@ -245,3 +245,16 @@ html[data-focus-input="keyboard"] #foodCatalogAdd:focus-visible { outline: 2px s
 
 #foodEnergyUnit { flex: 0 0 62px; width: 62px; min-width: 0; min-height: 32px; margin: 0; padding: 3px; border: 0; border-radius: 7px; background: var(--theme-surface); color: var(--theme-text); font: inherit; font-size: 12px; }
 .food-energy-conversion { margin: -6px 0 16px; color: var(--theme-muted); font-size: 11px; line-height: 1.7; }
+
+.nutrition-more { margin: 14px 0; padding: 0; border-top: 1px solid var(--theme-line); }
+.nutrition-more > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 0; list-style: none; cursor: pointer; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+.nutrition-more > summary::-webkit-details-marker { display: none; }
+.nutrition-more > summary::after { content: "＋"; margin-left: auto; color: var(--theme-muted); font-size: 15px; font-weight: 400; }
+.nutrition-more[open] > summary::after { content: "−"; }
+.nutrition-more > summary > span, .nutrition-more > p { color: var(--theme-muted); font-size: 10px; font-weight: 400; }
+.nutrition-more > p { margin: 6px 0 12px; line-height: 1.7; }
+.nutrition-more .diary-nutrition-inputs { margin-top: 0; }
+.nutrition-extra-values { margin: 0 0 12px; display: grid; gap: 10px; }
+.nutrition-extra-values > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
+.nutrition-extra-values dt, .nutrition-extra-values small { color: var(--theme-muted); font-size: 10px; }
+.nutrition-extra-values dd { margin: 0; color: var(--theme-text); }

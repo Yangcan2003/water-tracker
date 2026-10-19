@@ -5,7 +5,25 @@ export const FOOD_NUTRIENTS = [
   { key: "carbsG", label: "碳水", unit: "g", max: 5000 },
   { key: "proteinG", label: "蛋白质", unit: "g", max: 5000 },
   { key: "fatG", label: "脂肪", unit: "g", max: 5000 },
+  { key: "fiberG", label: "膳食纤维", unit: "g", max: 5000, optional: true },
+  { key: "sodiumMg", label: "钠", unit: "mg", max: 100000, optional: true },
+  { key: "saturatedFatG", label: "饱和脂肪", unit: "g", max: 5000, optional: true },
+  { key: "sugarsG", label: "总糖", unit: "g", max: 5000, optional: true },
+  { key: "addedSugarsG", label: "添加糖", unit: "g", max: 5000, optional: true },
 ];
+export const EXTRA_NUTRIENTS = FOOD_NUTRIENTS.filter(field => field.optional);
+export function normalizeNutrients(value) {
+  const result = {};
+  for (const { key, max, optional } of FOOD_NUTRIENTS) {
+    if (optional && value[key] == null) { result[key] = null; continue; }
+    if (typeof value[key] !== "number" || !Number.isFinite(value[key]) || value[key] < 0 || value[key] > max) return null;
+    result[key] = Math.round(value[key] * 10) / 10;
+  }
+  for (const [part, whole] of [["saturatedFatG", "fatG"], ["sugarsG", "carbsG"], ["addedSugarsG", "sugarsG"], ["addedSugarsG", "carbsG"]]) {
+    if (result[part] != null && result[whole] != null && result[part] > result[whole] + 0.1) return null;
+  }
+  return result;
+}
 export function normalizeFavoriteFood(value) {
   if (!value || typeof value !== "object") return null;
   const result = {};
@@ -17,10 +35,9 @@ export function normalizeFavoriteFood(value) {
   if (!FOOD_UNITS.includes(value.servingUnit) || typeof value.servingAmount !== "number" || !Number.isFinite(value.servingAmount) || value.servingAmount < 0.1 || value.servingAmount > 10000) return null;
   result.servingAmount = Math.round(value.servingAmount * 10) / 10;
   result.servingUnit = value.servingUnit;
-  for (const { key, max } of FOOD_NUTRIENTS) {
-    if (typeof value[key] !== "number" || !Number.isFinite(value[key]) || value[key] < 0 || value[key] > max) return null;
-    result[key] = Math.round(value[key] * 10) / 10;
-  }
+  const nutrients = normalizeNutrients(value);
+  if (!nutrients) return null;
+  Object.assign(result, nutrients);
   return result;
 }
 export function normalizeFoodCatalog(value) {

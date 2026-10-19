@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { ASSISTANT_RESPONSE_FORMAT, parseAssistantResponse, validateAssistantPhotos } from "../js/assistant-protocol.js";
 import { normalizeAssistantHistory } from "../js/assistant-history.js";
 import { handleAI } from "../server/ai-service.js";
+import { MEAL_NUTRITION_SCHEMA, MEAL_NUTRITION_INSTRUCTIONS } from "../js/meal-nutrition.js";
+import { ASSISTANT_ACTION_INSTRUCTIONS } from "../js/assistant-protocol.js";
 
 const photo = "data:image/jpeg;base64,YWJj";
 test("images accept only bounded compressed uploads, never remote URLs or active content", () => {
@@ -26,6 +28,12 @@ test("native and web structured proposal schemas cannot drift", async () => {
   const swift = await readFile(new URL("../ios/App/App/ChatGPTCore.swift", import.meta.url), "utf8");
   const text = swift.match(/let data = Data\(#"(\{"type":"json_schema","name":"health_assistant".+)"#\.utf8\)/)?.[1];
   assert.deepEqual(JSON.parse(text), ASSISTANT_RESPONSE_FORMAT);
+  const meal = swift.match(/let data = Data\(#"(\{"type":"json_schema","name":"meal_nutrition".+)"#\.utf8\)/)?.[1];
+  assert.deepEqual(JSON.parse(meal).schema, MEAL_NUTRITION_SCHEMA);
+  for (const [name, expected] of [["mealNutritionInstructions", MEAL_NUTRITION_INSTRUCTIONS], ["assistantActionInstructions", ASSISTANT_ACTION_INSTRUCTIONS]]) {
+    const source = swift.split(`static let ${name} = """\n`)[1].split('\n    """')[0];
+    assert.equal(source.split('\n').map(line => line.slice(4)).join('\n'), expected);
+  }
 });
 test("interactive request transports current images and only returns unexecuted structured proposals", async () => {
   const body = { provider: "openai", interactive: true, photos: [photo], shareRecords: false, context: null, actionCatalog: { records: [], localDate: "2026-10-18" }, messages: [{ role: "user", content: "记录喝水 250ml" }] };

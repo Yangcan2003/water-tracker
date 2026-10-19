@@ -46,6 +46,12 @@ import Foundation
         let referencedMeal = try ChatGPTCore.mealInput(photos: [], description: "测试燕麦50g", foodReferences: [foodReference])
         let referenceText = (referencedMeal[0]["content"] as! [[String: Any]])[0]["text"] as! String
         precondition(referenceText.contains("常吃食物参考") && referenceText.contains("\"servingAmount\":100") && referenceText.contains("\"kcal\":380"))
+        precondition(referenceText.contains("\"sodiumMg\":null"))
+        let enriched = try ChatGPTCore.mealInput(photos: [], description: "燕麦", foodReferences: [foodReference.merging(["sodiumMg": 123.4, "fiberG": 8, "addedSugarsG": 0]) { _, next in next }])
+        let enrichedText = (enriched[0]["content"] as! [[String: Any]])[0]["text"] as! String
+        precondition(enrichedText.contains("\"sodiumMg\":123.4") && enrichedText.contains("\"addedSugarsG\":0"))
+        rejects { _ = try ChatGPTCore.mealInput(photos: [], description: "燕麦", foodReferences: [foodReference.merging(["sodiumMg": true]) { _, next in next }]) }
+        rejects { _ = try ChatGPTCore.mealInput(photos: [], description: "燕麦", foodReferences: [foodReference.merging(["saturatedFatG": 8]) { _, next in next }]) }
         rejects { _ = try ChatGPTCore.mealInput(photos: [], description: "燕麦", foodReferences: [foodReference, foodReference]) }
         rejects { _ = try ChatGPTCore.mealInput(photos: [], description: "燕麦", foodReferences: [foodReference.merging(["kcal": true]) { _, next in next }]) }
         rejects { _ = try ChatGPTCore.mealInput(photos: [], description: "燕麦", foodReferences: [foodReference.merging(["servingUnit": "bad"]) { _, next in next }]) }

@@ -105,7 +105,7 @@ test("health assistant includes current favorite foods independently of meal dat
 });
 
 test("large all-history snapshots retain every favorite food, unit, alias, note and nutrient within the context budget", () => {
-  const foods = Array.from({ length: 50 }, (_, i) => ({ id: `food-${i}`, name: `${i}`.padEnd(60, "食"), aliases: "别".repeat(100), note: "注".repeat(80), servingAmount: 100, servingUnit: "g", kcal: 123.4, carbsG: 23.4, proteinG: 12.3, fatG: 3.4 }));
+  const foods = Array.from({ length: 50 }, (_, i) => ({ id: `food-${i}`, name: `${i}`.padEnd(60, "食"), aliases: "别".repeat(100), note: "注".repeat(80), servingAmount: 100, servingUnit: "g", kcal: 123.4, carbsG: 23.4, proteinG: 12.3, fatG: 3.4, fiberG: 2.1, sodiumMg: 123.4, saturatedFatG: 1, sugarsG: 3, addedSugarsG: 1 }));
   const days = Array.from({ length: 500 }, (_, i) => { const date = new Date(2025, 0, i + 1); return { dateKey: date.toISOString().slice(0, 10), mealRecs: [{ name: "历史食物".repeat(30), note: "备注".repeat(80), nutrition: { kcal: 100, carbsG: 10, proteinG: 5, fatG: 3 } }] }; });
   const context = buildHealthContext(days, { rangeDays: "all", categories: ["meal"], now: new Date(2026, 9, 18), profile: { foodCatalog: foods }, compact: true });
   assert.ok(JSON.stringify(context).length <= 18000);

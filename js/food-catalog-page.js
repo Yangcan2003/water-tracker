@@ -1,4 +1,4 @@
-import { FOOD_NUTRIENTS, MAX_FAVORITE_FOODS, normalizeFavoriteFood, normalizeFoodCatalog, foodServingLabel, foodEnergyToKcal, foodEnergyFromKcal } from "./food-catalog.js";
+import { EXTRA_NUTRIENTS, FOOD_NUTRIENTS, MAX_FAVORITE_FOODS, normalizeFavoriteFood, normalizeFoodCatalog, foodServingLabel, foodEnergyToKcal, foodEnergyFromKcal } from "./food-catalog.js";
 import { esc, generateLocalId } from "./utils.js";
 
 export function createFoodCatalogPage({ storage, showToast }) {
@@ -45,6 +45,7 @@ export function createFoodCatalogPage({ storage, showToast }) {
     form.reset();
     for (const [id, key, fallback] of [["foodName", "name", ""], ["foodAliases", "aliases", ""], ["foodAmount", "servingAmount", 100], ["foodUnit", "servingUnit", "g"], ["foodNote", "note", ""]]) el(id).value = food?.[key] ?? fallback;
     for (const field of FOOD_NUTRIENTS) el(`foodValue${field.key}`).value = food?.[field.key] ?? "";
+    el("foodExtraNutrition").open = EXTRA_NUTRIENTS.some(field => food?.[field.key] != null);
     energyUnit = "kcal"; energyKcal = food?.kcal ?? null;
     renderEnergy(true);
     el("foodCatalogEditorTitle").textContent = food ? "编辑常吃食物" : "添加常吃食物";
@@ -72,7 +73,7 @@ export function createFoodCatalogPage({ storage, showToast }) {
     const food = normalizeFavoriteFood({ id: editingId || generateLocalId(), name: el("foodName").value, aliases: el("foodAliases").value,
       servingAmount: Number(el("foodAmount").value), servingUnit: el("foodUnit").value, note: el("foodNote").value,
       ...Object.fromEntries(FOOD_NUTRIENTS.map(field => [field.key, field.key === "kcal" ? energyKcal : el(`foodValue${field.key}`).value.trim() ? Number(el(`foodValue${field.key}`).value) : null])) });
-    if (!food) { message.textContent = "请填写有效的名称、计量份量和四项营养数值。"; return; }
+    if (!food) { message.textContent = "请检查名称、份量和营养数值；更多营养可留空，饱和脂肪和糖不能超过对应总量。"; return; }
     const all = foods(), index = all.findIndex(value => value.id === editingId);
     if (index < 0 && all.length >= MAX_FAVORITE_FOODS) { message.textContent = "最多保存 50 种常吃食物，请先整理已有食物。"; return; }
     if (index < 0) all.push(food); else all[index] = food;

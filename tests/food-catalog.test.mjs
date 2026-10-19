@@ -4,7 +4,7 @@ import { normalizeFavoriteFood, normalizeFoodCatalog, validateFoodReferences, fo
 import { mealAnalysisInput, validateMealAnalysis, MEAL_NUTRITION_INSTRUCTIONS } from "../js/meal-nutrition.js";
 import { analyzeMeal } from "../js/meal-nutrition-client.js";
 import { handleAI } from "../server/ai-service.js";
-const food = { id: "oats", name: "原味燕麦片", aliases: "测试燕麦", servingAmount: 100, servingUnit: "g", kcal: 380, carbsG: 60, proteinG: 13, fatG: 7, note: "干重" };
+const food = { id: "oats", name: "原味燕麦片", aliases: "测试燕麦", servingAmount: 100, servingUnit: "g", kcal: 380, carbsG: 60, proteinG: 13, fatG: 7, fiberG: null, sodiumMg: null, saturatedFatG: null, sugarsG: null, addedSugarsG: null, note: "干重" };
 const photo = "data:image/jpeg;base64,YQ==";
 
 test("favorite foods preserve per-portion units, zeros and decimal nutrition without trusting extra fields", () => {
@@ -61,4 +61,16 @@ test("food energy conversion keeps kJ and kcal consistent, including zero and in
   for (const value of [null, "", "100", NaN, Infinity, -1]) assert.equal(foodEnergyToKcal(value, "kJ"), null);
   assert.equal(foodEnergyToKcal(100, "bad"), null);
   assert.equal(normalizeFavoriteFood({ ...food, kcal: foodEnergyToKcal(418.4, "kJ") }).kcal, 100);
+});
+
+test("optional nutrients preserve unknown and true zero, and reject invalid sugar/fat composition", () => {
+  const legacy = { ...food }; for (const key of ["fiberG", "sodiumMg", "saturatedFatG", "sugarsG", "addedSugarsG"]) delete legacy[key];
+  assert.equal(normalizeFavoriteFood(legacy).sodiumMg, null);
+  assert.equal(normalizeFavoriteFood({ ...legacy, sodiumMg: 0 }).sodiumMg, 0);
+  for (const values of [{ fiberG: -1 }, { sodiumMg: "100" }, { sodiumMg: 100001 }, { saturatedFatG: 8 }, { sugarsG: 61 }, { sugarsG: 10, addedSugarsG: 11 }]) assert.equal(normalizeFavoriteFood({ ...food, ...values }), null);
+  const complete = normalizeFavoriteFood({ ...food, fiberG: 7, sodiumMg: 120, saturatedFatG: 1.2, sugarsG: 3, addedSugarsG: 0 });
+  assert.equal(validateFoodReferences([complete])[0].addedSugarsG, 0);
+  const selected = mealAnalysisInput({ photos: [photo], foodReferences: [complete], description: "50g" });
+  assert.match(selected[0].content[0].text, /"sodiumMg":120/);
+  assert.match(MEAL_NUTRITION_INSTRUCTIONS, /不能把未标示添加糖当作0/);
 });

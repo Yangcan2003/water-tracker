@@ -17,10 +17,57 @@ const identity = { uid: "test", getUser: () => user };
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const catalog = async () => buildActionCatalog(await storage.getHistoryRange(range, { force: true }), storage.getCachedBodyMeasurements(), storage.getCachedProfile());
 const propose = async (operation, category, values = {}, ref = null) => prepareAssistantAction({ operation, category, values, ref, date: today, time: "12:30" }, await catalog());
+const favorite = { name: "测试燕麦", aliases: "测试品牌", note: "标签数据", servingAmount: 100, servingUnit: "g", kcal: 380, carbsG: 60, proteinG: 13, fatG: 7, fiberG: 8, sodiumMg: 12, saturatedFatG: 1, sugarsG: 2, addedSugarsG: 0 };
 beforeEach(() => {
   local.clear(); mock.documents.clear(); mock.denied.clear(); mock.cachedReads.clear(); mock.reads.length = 0; mock.writes.length = 0; mock.readGate = null; mock.writeGate = null;
   storage.mealPhotos = { put: async photos => photos.map(() => "photo-ref"), get: async () => ["data:image/jpeg;base64,YWJj"] };
   storage.setUser(user, {});
+});
+
+test("assistant food proposals create library references only after confirmation, then preserve unrelated foods on update", async () => {
+  const create = await propose("create", "food", favorite);
+  assert.equal(storage.getCachedProfile().foodCatalog?.length || 0, 0);
+  await executeAssistantAction(storage, create, identity);
+  const first = storage.getCachedProfile().foodCatalog[0];
+  assert.equal(first.sodiumMg, 12); assert.equal(first.addedSugarsG, 0);
+  assert.equal(storage.getCachedDay(today).meal.length, 0);
+  await assert.rejects(executeAssistantAction(storage, create, identity), /已处理/);
+  const data = await catalog(), ref = data.data.records.find(item => item.category === "food").ref;
+  assert.ok(!JSON.stringify(data.data).includes(first.id));
+  const update = prepareAssistantAction({ operation: "update", category: "food", ref, values: { sodiumMg: 20 } }, data);
+  const other = { ...first, id: "other-food", name: "另一种燕麦" };
+  await storage.updateProfile({ foodCatalog: [first, other] });
+  await executeAssistantAction(storage, update, identity);
+  const foods = storage.getCachedProfile().foodCatalog;
+  assert.equal(foods.length, 2); assert.equal(foods[0].sodiumMg, 20); assert.equal(foods[0].fiberG, 8);
+  assert.equal(foods[1].name, other.name); assert.equal(foods[1].sodiumMg, 12);
+});
+
+test("food confirmation rejects stale targets, duplicate creates and unsafe portion/unit changes", async () => {
+  await executeAssistantAction(storage, await propose("create", "food", favorite), identity);
+  await assert.rejects(executeAssistantAction(storage, await propose("create", "food", favorite), identity), /已存在/);
+  const data = await catalog(), ref = data.data.records.find(item => item.category === "food").ref;
+  const update = prepareAssistantAction({ operation: "update", category: "food", ref, values: { sugarsG: 3 } }, data);
+  const first = storage.getCachedProfile().foodCatalog[0];
+  await storage.updateProfile({ foodCatalog: [{ ...first, sodiumMg: 99 }] });
+  await assert.rejects(executeAssistantAction(storage, update, identity), /发生变化/);
+  assert.throws(() => prepareAssistantAction({ operation: "update", category: "food", ref, values: { servingUnit: "袋", servingAmount: 1 } }, data), /更换计量单位/);
+  const portion = prepareAssistantAction({ operation: "update", category: "food", ref, values: { servingAmount: 50 } }, data);
+  assert.equal(portion.after.kcal, 190); assert.equal(portion.after.fiberG, 4); assert.equal(portion.after.sodiumMg, 6);
+});
+
+test("food removal, capacity and account checks never replace the whole profile or another user's data", async () => {
+  await storage.updateProfile({ dailyGoal: 2400 });
+  await executeAssistantAction(storage, await propose("create", "food", favorite), identity);
+  const data = await catalog(), ref = data.data.records.find(item => item.category === "food").ref;
+  const remove = prepareAssistantAction({ operation: "delete", category: "food", ref, values: {} }, data);
+  await assert.rejects(executeAssistantAction(storage, remove, { uid: "test", getUser: () => ({ uid: "another" }) }), /账号/);
+  await executeAssistantAction(storage, remove, identity);
+  assert.deepEqual(storage.getCachedProfile().foodCatalog, []); assert.equal(storage.getCachedProfile().dailyGoal, 2400);
+  const full = Array.from({ length: 50 }, (_, i) => ({ ...favorite, id: `food-${i}`, name: `测试食物${i}` }));
+  await storage.updateProfile({ foodCatalog: full });
+  await assert.rejects(executeAssistantAction(storage, await propose("create", "food", favorite), identity), /最多保存/);
+  assert.equal(storage.getCachedProfile().foodCatalog.length, 50);
 });
 
 test("a proposal does not mutate storage; confirmation adds, updates and deletes one exact water record", async () => {

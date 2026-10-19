@@ -1,6 +1,7 @@
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import { normalizeFavoriteFood } from "../js/food-catalog.js";
 import { historyRange } from "../js/history-range.js";
 import { loadDaySnapshot } from "../js/day-loader.js";
 import { buildHealthContext } from "../js/assistant-context.js";
@@ -24,14 +25,14 @@ test("food catalog survives guest upload, cloud refresh, offline edits and expli
   storage.setUser(null, null);
   await storage.updateProfile({ foodCatalog: [food] });
   storage.setUser({ uid: "test" }, {}); await storage.mergeLocalToCloud();
-  assert.deepEqual((await storage.getProfile()).foodCatalog, [food]);
+  assert.deepEqual((await storage.getProfile()).foodCatalog, [normalizeFavoriteFood(food)]);
   mock.denied.add(undefined);
   const updated = { ...food, kcal: 390 };
   await storage.updateProfile({ foodCatalog: [updated] });
   mock.denied.clear();
-  assert.deepEqual((await storage.getProfile()).foodCatalog, [updated]);
+  assert.deepEqual((await storage.getProfile()).foodCatalog, [normalizeFavoriteFood(updated)]);
   await storage.mergeLocalToCloud();
-  assert.deepEqual(mock.documents.get("users/test").foodCatalog, [updated]);
+  assert.deepEqual(mock.documents.get("users/test").foodCatalog, [normalizeFavoriteFood(updated)]);
   await storage.updateProfile({ foodCatalog: [] });
   assert.deepEqual((await storage.getProfile()).foodCatalog, []);
 });
@@ -42,7 +43,7 @@ test("an upgraded client without catalog settings preserves foods already saved 
   const data = storage._loadLocal(); data.pendingUpload = { profile: true }; storage._saveLocal(data);
   await storage.mergeLocalToCloud();
   assert.deepEqual(mock.documents.get("users/test").foodCatalog, [food]);
-  assert.deepEqual((await storage.getProfile()).foodCatalog, [food]);
+  assert.deepEqual((await storage.getProfile()).foodCatalog, [normalizeFavoriteFood(food)]);
 });
 
 test("an unset goal on an upgraded device does not erase a goal saved on another device", async () => {
