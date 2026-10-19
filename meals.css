@@ -305,3 +305,5 @@ html[data-focus-input="keyboard"] .food-energy-toggle input:focus-visible + span
 .nutrition-extra-values > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
 .nutrition-extra-values dt, .nutrition-extra-values small { color: var(--theme-muted); font-size: 10px; }
 .nutrition-extra-values dd { margin: 0; color: var(--theme-text); }
+
+.diary-entry-nutrition .diary-entry-key-nutrients { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--theme-line); }

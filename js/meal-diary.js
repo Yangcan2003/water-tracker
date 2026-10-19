@@ -64,8 +64,10 @@ export function mealEntryHTML(record) {
   const photos = (record.photos || []).filter(isMealPhoto);
   const title = record.name?.trim() || (photos.length ? "食物照片" : "饮食记录");
   const nutrition = normalizeMealNutrition(record.nutrition);
-  const nutritionHTML = nutrition ? `<div class="diary-entry-nutrition"><div><strong>${nutrition.kcal}<small> kcal</small></strong><span>${nutrition.source === "manual" ? "已调整估算" : "AI 估算"}</span></div><dl>${NUTRITION_FIELDS.slice(1, 4).map(field => `<div><dt>${field.label}</dt><dd>${nutrition[field.key]}<small> g</small></dd></div>`).join("")}</dl></div>` : "";
-  const extras = nutrition ? NUTRITION_FIELDS.filter(field => field.optional && nutrition[field.key] != null) : [];
+  const keyExtras = nutrition ? NUTRITION_FIELDS.filter(field => ["fiberG", "sodiumMg"].includes(field.key) && nutrition[field.key] != null) : [];
+  const keyExtraHTML = keyExtras.length ? `<dl class="diary-entry-key-nutrients">${keyExtras.map(field => `<div><dt>${field.label}</dt><dd>${nutrition[field.key]}<small> ${field.unit}</small></dd></div>`).join("")}</dl>` : "";
+  const nutritionHTML = nutrition ? `<div class="diary-entry-nutrition"><div><strong>${nutrition.kcal}<small> kcal</small></strong><span>${nutrition.source === "manual" ? "已调整估算" : "AI 估算"}</span></div><dl>${NUTRITION_FIELDS.slice(1, 4).map(field => `<div><dt>${field.label}</dt><dd>${nutrition[field.key]}<small> g</small></dd></div>`).join("")}</dl>${keyExtraHTML}</div>` : "";
+  const extras = nutrition ? NUTRITION_FIELDS.filter(field => field.optional && !["fiberG", "sodiumMg"].includes(field.key) && nutrition[field.key] != null) : [];
   const extraHTML = extras.length ? `<details class="nutrition-more"><summary>更多营养</summary><dl class="nutrition-extra-values">${extras.map(field => `<div><dt>${field.label}</dt><dd>${nutrition[field.key]} <small>${field.unit}</small></dd></div>`).join("")}</dl></details>` : "";
   return `<article class="diary-entry${photos.length ? " has-photos" : " text-only"}" data-meal-record="${escape(record.id)}">
     <div class="diary-entry-top">${!photos.length ? `<span class="diary-text-icon">${mealIcon("plate")}</span>` : ""}<div class="diary-entry-copy"><h4>${escape(title)}</h4><div class="diary-entry-meta">${mealIcon("clock")}<time${validDate ? ` datetime="${date.toISOString()}"` : ""}>${time}</time>${photos.length ? `<span>· ${photos.length} 张照片</span>` : ""}</div></div><button class="diary-entry-more" type="button" data-meal-actions="${escape(record.id)}" aria-label="${escape(title)}，更多操作">${mealIcon("more")}</button></div>

@@ -1317,9 +1317,9 @@ function renderMealNutrition() {
     input.required = Boolean(nutrition) && !NUTRITION_FIELDS[index].optional;
     input.disabled = !nutrition;
   });
-  document.getElementById("mealExtraNutrition").open = EXTRA_NUTRIENTS.some(field => nutrition?.[field.key] != null);
+  document.getElementById("mealExtraNutrition").open = EXTRA_NUTRIENTS.filter(field => !["fiberG", "sodiumMg"].includes(field.key)).some(field => nutrition?.[field.key] != null);
   E.mealNutritionAssumption.textContent = nutrition ? [nutrition.portion, nutrition.note].filter(Boolean).join("；") : "";
-  E.mealNutritionStatus.textContent = nutrition ? "已识别这一餐的总营养，可检查和修改后保存。" : "填写食物文字或添加图片，即可估算热量、碳水、蛋白质和脂肪。";
+  E.mealNutritionStatus.textContent = nutrition ? "已估算这一餐的营养；无法判断的项目留空，可修改后保存。" : "图片或文字均可识别，估算热量、三大营养素、膳食纤维和钠等。";
 }
 function readMealNutrition() {
   if (!mealDraft?.nutrition) return null;

@@ -23,10 +23,11 @@ const env = { FIREBASE_API_KEY: "fake-key", AI_ALLOWED_UIDS: "sync-test", OPENAI
 const fetcher = async (url, options) => {
   if (url.includes("identitytoolkit")) return Response.json({ users: [{ localId: "sync-test" }] });
   const payload = JSON.parse(options.body), text = payload.input[0].content[0].text;
-  requests.push({ images: payload.input[0].content.filter(item => item.type === "input_image").length, strict: payload.text.format.strict });
+  requests.push({ images: payload.input[0].content.filter(item => item.type === "input_image").length, strict: payload.text.format.strict, nutrientKeys: payload.text.format.schema.required });
   await new Promise(resolve => setTimeout(resolve, text.includes("慢速") ? 1200 : 120));
   if (text.includes("失败测试")) return new Response("fake upstream failure", { status: 500 });
   const value = { isFood: !text.includes("非食物"), name: "米饭与鸡肉", kcal: 580, carbsG: 62, proteinG: 35, fatG: 21, portion: "米饭约150g，鸡肉约120g", note: "烹饪油量存在误差" };
+  if (text.includes("补充营养测试") || payload.input[0].content.some(item => item.type === "input_image")) Object.assign(value, { fiberG: 8, sodiumMg: 680, saturatedFatG: 3, sugarsG: 6, addedSugarsG: null, note: "纤维按食材估算；钠按常见调味估算，实际盐量未知" });
   return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }] });
 };
 const types = { html: "text/html", js: "text/javascript", css: "text/css", png: "image/png", svg: "image/svg+xml", json: "application/json" };

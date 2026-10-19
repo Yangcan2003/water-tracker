@@ -32,3 +32,16 @@ test("entry rendering preserves the recorded time, escapes user text/IDs and sup
   assert.match(text, /text-only/);
   assert.doesNotMatch(text, /diary-photo-grid/);
 });
+
+
+test("saved AI fiber and sodium remain visible on the meal card, while other nutrients are expandable and unknown values are omitted", () => {
+  const nutrition = { kcal: 580, carbsG: 62, proteinG: 35, fatG: 21, fiberG: 8, sodiumMg: 680, saturatedFatG: 3, sugarsG: 6, addedSugarsG: null };
+  const html = mealEntryHTML({ id: "meal", name: "一餐", nutrition });
+  const main = html.split('<details class="nutrition-more">')[0];
+  assert.match(main, /膳食纤维<\/dt><dd>8/); assert.match(main, /钠<\/dt><dd>680<small> mg/);
+  assert.match(html, /饱和脂肪/); assert.match(html, /总糖/); assert.doesNotMatch(html, /添加糖/);
+  assert.equal((html.match(/膳食纤维/g) || []).length, 1);
+  assert.equal((html.match(/钠<\/dt>/g) || []).length, 1);
+  const zero = mealEntryHTML({ id: "zero", nutrition: { ...nutrition, fiberG: 0, sodiumMg: 0 } });
+  assert.match(zero, /钠<\/dt><dd>0/);
+});
