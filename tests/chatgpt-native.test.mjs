@@ -12,6 +12,7 @@ test("native plan bridge sends only selected chat and cancels requests without f
     chat: async value => { calls.push(value); return { reply: "连接成功" }; },
     cancel: async () => { calls.push("cancel"); },
   });
+  assert.equal(client.managesRequestLifetime, true);
   assert.equal((await client.request("https://unused.invalid")).providers[0].configured, false);
   const body = { messages: [{ role: "user", content: "hi" }], shareRecords: false, context: null };
   assert.equal((await client.request("https://unused.invalid", { method: "POST", token: "fake-firebase-token", body })).reply, "连接成功");

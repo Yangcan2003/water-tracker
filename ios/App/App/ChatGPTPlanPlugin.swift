@@ -57,34 +57,96 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
     private var authContinuation: CheckedContinuation<(code: String, clientID: String), Error>?
     private var authTimer: DispatchWorkItem?
     private var modelName: String?
+    private var backgroundRevision = 0
+    private var foregroundWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    private var lifecycleObservers: [NSObjectProtocol] = []
     private lazy var network: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil; config.httpCookieStorage = nil; config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = 45; config.timeoutIntervalForResource = 60
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
+    public override func load() {
+        lifecycleObservers = [
+            NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.backgroundRevision += 1 },
+            NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self = self else { return }
+                let waiters = self.foregroundWaiters; self.foregroundWaiters.removeAll()
+                for waiter in waiters.values { waiter.resume() }
+            }
+        ]
+    }
+    deinit { for observer in lifecycleObservers { NotificationCenter.default.removeObserver(observer) } }
+
+    @MainActor private func waitUntilActive() async throws {
+        try Task.checkCancellation()
+        if UIApplication.shared.applicationState == .active { return }
+        let id = UUID()
+        try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { (waiter: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled { waiter.resume(throwing: CancellationError()) }
+                else if UIApplication.shared.applicationState == .active { waiter.resume() }
+                else { self.foregroundWaiters[id] = waiter }
+            }
+        }, onCancel: { [weak self] in
+            DispatchQueue.main.async { self?.foregroundWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
+        })
+    }
+
+    @MainActor private func protectInference(expired: @escaping () -> Void) -> (() -> Void) {
+        var id = UIBackgroundTaskIdentifier.invalid
+        let end = {
+            guard id != .invalid else { return }
+            let finished = id; id = .invalid
+            UIApplication.shared.endBackgroundTask(finished)
+        }
+        id = UIApplication.shared.beginBackgroundTask(withName: "Finish health assistant answer") { expired(); end() }
+        return end
+    }
+
+    @MainActor private func recoveringInference(input: [[String: Any]], instructions: String, format: [String: Any]?) async throws -> (String, String) {
+        let recovery = PlanInferenceRecovery(isActive: { UIApplication.shared.applicationState == .active },
+            backgroundRevision: { self.backgroundRevision }, waitUntilActive: { try await self.waitUntilActive() },
+            protect: { self.protectInference(expired: $0) })
+        return try await recovery.run(prepare: {
+            let record = try await self.credentials()
+            return (record.accessToken!, try await self.model(token: record.accessToken!))
+        }, send: { token, model in
+            let reply = try await self.inference(token: token, model: model, input: input, instructions: instructions, format: format)
+            return (reply, model)
+        })
+    }
     public func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
     public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { bridge!.viewController!.view.window! }
     private func state(_ record: PlanRegistration) -> [String: Any] {
         let granted = (try? ChatGPTCore.requireScopes(record.scope ?? "")) != nil
         return ["connected": record.accessToken != nil && granted, "account": record.label ?? "ChatGPT 账号", "model": modelName ?? "GPT"]
     }
-    private func start(_ call: CAPPluginCall, action: @escaping @MainActor () async throws -> [String: Any]) {
+    private func start(_ call: CAPPluginCall, deliverOnForeground: Bool = false, action: @escaping @MainActor () async throws -> [String: Any]) {
         DispatchQueue.main.async {
             guard self.operation == nil else { call.reject("请等待当前操作完成", "PLAN_BUSY"); return }
             self.operation = Task { @MainActor in
                 defer { self.operation = nil }
-                do { let result = try await action(); try Task.checkCancellation(); call.resolve(result) }
-                catch is CancellationError { call.reject("请求已取消", "PLAN_CANCELLED") }
-                catch let error as PlanError { call.reject(error.localizedDescription, error.code) }
-                catch { call.reject("ChatGPT 连接暂不可用，请稍后重试", "PLAN_NETWORK") }
+                do {
+                    let result = try await action()
+                    // Do not hand a completed answer to a suspended WKWebView.
+                    if deliverOnForeground { try await self.waitUntilActive() }
+                    try Task.checkCancellation(); call.resolve(result)
+                } catch {
+                    if deliverOnForeground && !Task.isCancelled { try? await self.waitUntilActive() }
+                    if Task.isCancelled || error is CancellationError { call.reject("请求已取消", "PLAN_CANCELLED") }
+                    else if let error = error as? PlanError { call.reject(error.localizedDescription, error.code) }
+                    else { call.reject("ChatGPT 连接暂不可用，请稍后重试", "PLAN_NETWORK") }
+                }
             }
         }
     }
     @objc func getState(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            do { call.resolve(self.state(try PlanVault.read())) }
-            catch { call.reject("无法读取 ChatGPT 连接状态，请解锁后重试") }
+            Task { @MainActor in
+                do { try await self.waitUntilActive(); call.resolve(self.state(try PlanVault.read())) }
+                catch { call.reject("无法读取 ChatGPT 连接状态，请解锁后重试") }
+            }
         }
     }
     @objc func connect(_ call: CAPPluginCall) {
@@ -136,7 +198,7 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
     @objc func chat(_ call: CAPPluginCall) {
         // Capture only the selected chat/context, never the Firebase ID token.
         let body = call.getObject("body") ?? [:]
-        start(call) {
+        start(call, deliverOnForeground: true) {
             guard let messages = body["messages"] as? [[String: Any]], (1...16).contains(messages.count), messages.count % 2 == 1 else { throw ChatGPTCore.fail("对话格式无效") }
             var input: [[String: Any]] = [], total = 0
             for (index, message) in messages.enumerated() {
@@ -172,9 +234,7 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
                     input[input.count - 1]["content"] = [["type": "input_text", "text": question]] + images
                 }
             }
-            let record = try await self.credentials()
-            let model = try await self.model(token: record.accessToken!)
-            let reply = try await self.inference(token: record.accessToken!, model: model, input: input, instructions: Self.healthInstructions + (interactive ? "\n" + ChatGPTCore.assistantActionInstructions : ""), format: interactive ? ChatGPTCore.assistantResponseFormat : nil)
+            let (reply, model) = try await self.recoveringInference(input: input, instructions: Self.healthInstructions + (interactive ? "\n" + ChatGPTCore.assistantActionInstructions : ""), format: interactive ? ChatGPTCore.assistantResponseFormat : nil)
             self.modelName = model
             if interactive {
                 guard let data = reply.data(using: .utf8), let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let text = result["reply"] as? String, !text.isEmpty, let actions = result["actions"] as? [[String: Any]], actions.count <= 8 else { throw ChatGPTCore.fail("回答格式未完整，没有修改任何记录，请重试") }
@@ -185,13 +245,11 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
     }
     @objc func analyzeMeal(_ call: CAPPluginCall) {
         let body = call.getObject("body") ?? [:]
-        start(call) {
+        start(call, deliverOnForeground: true) {
             guard let photos = body["photos"] as? [String], body["description"] == nil || body["description"] is String else { throw ChatGPTCore.fail("食物识别请求无效") }
             guard body["foodReferences"] == nil || body["foodReferences"] is [[String: Any]] else { throw ChatGPTCore.fail("常吃食物参考格式无效") }
             let input = try ChatGPTCore.mealInput(photos: photos, description: body["description"] as? String ?? "", foodReferences: body["foodReferences"] as? [[String: Any]] ?? [])
-            let record = try await self.credentials()
-            let model = try await self.model(token: record.accessToken!)
-            let reply = try await self.inference(token: record.accessToken!, model: model, input: input,
+            let (reply, model) = try await self.recoveringInference(input: input,
                 instructions: ChatGPTCore.mealNutritionInstructions, format: ChatGPTCore.mealNutritionFormat)
             self.modelName = model
             return ["reply": reply, "model": model]

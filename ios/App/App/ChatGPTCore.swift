@@ -216,9 +216,67 @@ name为简短菜品名；portion说明你估计的份量；note简短说明影�
             }
         }
         func result() throws -> String {
-            guard completed, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw fail("回答未完整接收，请重试；输入内容已保留") }
+            guard completed, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw fail("回答未完整接收，请重试；输入内容已保留", "PLAN_INTERRUPTED") }
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
+    }
+}
+
+// UIKit supplies a finite background lease, not unlimited execution. Keep the
+// original request in memory and resume an interrupted inference on foreground.
+// Preparation (including refresh-token rotation) is never cancelled by expiry.
+@MainActor final class PlanInferenceRecovery {
+    let isActive: () -> Bool
+    let backgroundRevision: () -> Int
+    let waitUntilActive: () async throws -> Void
+    let protect: (@escaping () -> Void) -> (() -> Void)
+
+    init(isActive: @escaping () -> Bool, backgroundRevision: @escaping () -> Int,
+         waitUntilActive: @escaping () async throws -> Void,
+         protect: @escaping (@escaping () -> Void) -> (() -> Void)) {
+        self.isActive = isActive; self.backgroundRevision = backgroundRevision
+        self.waitUntilActive = waitUntilActive; self.protect = protect
+    }
+
+    func run<Prepared, Value>(prepare: () async throws -> Prepared, send: @escaping (Prepared) async throws -> Value) async throws -> Value {
+        for retry in 0...2 {
+            try Task.checkCancellation()
+            try await waitUntilActive()
+            try Task.checkCancellation()
+            let revision = backgroundRevision()
+            var expired = false, transfer: Task<Value, Error>?
+            let release = protect { expired = true; transfer?.cancel() }
+            var released = false
+            func endProtection() { if !released { released = true; release() } }
+            do {
+                let prepared = try await prepare()
+                try Task.checkCancellation()
+                guard !expired else { throw ChatGPTCore.fail("等待回到前台继续回答", "PLAN_BACKGROUND_INTERRUPTED") }
+                let running = Task { @MainActor in try await send(prepared) }
+                transfer = running
+                let value = try await withTaskCancellationHandler(operation: { try await running.value }, onCancel: { running.cancel() })
+                try Task.checkCancellation()
+                endProtection()
+                // A finished answer stays in native memory while WKWebView is
+                // suspended, and must not trigger another inference on return.
+                try await waitUntilActive()
+                try Task.checkCancellation()
+                return value
+            } catch {
+                endProtection()
+                try Task.checkCancellation()
+                let interruptedInBackground = expired || backgroundRevision() != revision || !isActive()
+                guard retry < 2, interruptedInBackground, Self.canResume(error, expired: expired) else { throw error }
+            }
+        }
+        throw ChatGPTCore.fail("回答暂时无法恢复，请重试")
+    }
+
+    private static func canResume(_ error: Error, expired: Bool) -> Bool {
+        if error is CancellationError { return expired }
+        if let error = error as? PlanError { return ["PLAN_INTERRUPTED", "PLAN_BACKGROUND_INTERRUPTED"].contains(error.code) }
+        guard let error = error as? URLError else { return false }
+        return [.timedOut, .networkConnectionLost, .notConnectedToInternet, .cancelled].contains(error.code)
     }
 }
 

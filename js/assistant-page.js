@@ -5,6 +5,7 @@ import { chatGPTPlan } from "./chatgpt-plan-client.js";
 import { formatAssistantText, awaitAssistantOperation } from "./assistant-ui.js";
 import { createAssistantKeyboard } from "./assistant-keyboard.js";
 import { createAssistantHistory } from "./assistant-history.js";
+import { createForegroundDeadline } from "./assistant-deadline.js";
 import { prepareMealPhoto, isMealPhoto } from "./meals.js";
 import { parseAssistantResponse } from "./assistant-protocol.js";
 import { ACTION_LABELS, buildActionCatalog, prepareAssistantAction, describeAssistantRecord, executeAssistantAction } from "./assistant-actions.js";
@@ -143,7 +144,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     if (statusCheck) return statusCheck.promise;
     if (!force && checkedAt && Date.now() - checkedAt < 30000) return connection === "connected";
     const active = new AbortController(), version = identityGeneration; connection = "checking"; updateControls();
-    const timer = setTimeout(() => active.abort("timeout"), 10000);
+    const timer = createForegroundDeadline(10000, () => active.abort("timeout"));
     const check = { controller: active, promise: null }; statusCheck = check;
     check.promise = (async () => {
       try {
@@ -152,7 +153,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
         connection = result.providers?.some(item => item.id === "openai" && item.configured) ? "connected" : "disconnected";
         find("#assistantPlanLabel").textContent = result.account || "由 OpenAI 提供"; lastConnectionError = ""; checkedAt = Date.now(); return connection === "connected";
       } catch (error) { if (version === identityGeneration) { connection = "error"; lastConnectionError = active.signal.aborted ? "连接状态检查超时，请稍后重试。" : error.message || "无法检查助手连接。"; checkedAt = 0; } return false; }
-      finally { clearTimeout(timer); if (statusCheck === check) statusCheck = null; updateControls(); }
+      finally { timer.stop(); if (statusCheck === check) statusCheck = null; updateControls(); }
     })();
     return check.promise;
   }
@@ -169,7 +170,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     verificationVisible = false; busy = true; controller = new AbortController(); const active = controller, wait = promise => awaitAssistantOperation(promise, active.signal);
     if (pending && pending.question !== question) messages.push({ role: "user", content: pending.question, state: "failed" });
     pending = { question, photos: selectedPhotos, state: "sending" }; attachments = []; renderAttachments(); input.value = ""; resizeInput(); saveConversation(); setProgress("正在准备回答…"); updateControls(); renderMessages(); scrollToEnd();
-    const timer = setTimeout(() => active.abort("timeout"), 65000);
+    const timer = createForegroundDeadline(65000, () => active.abort("timeout"));
     try {
       if (selectedPhotos.length) { pending.photoIds = await wait(storage.mealPhotos.put(selectedPhotos)); if (version === generation) saveConversation(); }
       if (!await wait(checkConnection())) throw new Error(lastConnectionError || (plan ? "请先连接 ChatGPT 会员账号。" : "助手尚未接通，请稍后重试。"));
@@ -192,6 +193,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       const history = messages.filter(message => message.state !== "failed").slice(-10).map(({ role, content }) => ({ role, content }));
       while (history.reduce((sum, item) => sum + item.content.length, question.length) > 20000) history.splice(0, 2);
       setProgress("正在思考…"); renderMessages();
+      if (plan?.managesRequestLifetime) timer.stop();
       const result = await wait(request(backend, { method: "POST", token, signal: active.signal, body: { provider: "openai", messages: [...history, { role: "user", content: question }], shareRecords: share.checked, context, interactive: true, photos: selectedPhotos, actionCatalog: catalog.data } }));
       if (version !== generation || getUser()?.uid !== user.uid) return;
       const parsed = parseAssistantResponse({ reply: result.reply, actions: result.actions || [] });
@@ -209,7 +211,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       verificationVisible = error.code === "EMAIL_VERIFICATION_REQUIRED" && typeof verifyEmail === "function";
       if (plan && error.code === "PLAN_AUTH_REQUIRED") { connection = "disconnected"; checkedAt = 0; }
       showError(active.signal.aborted ? active.signal.reason === "user" ? "已停止回答，问题仍保留在输入框中。" : "等待超时，问题已保留，请重试。" : verificationVisible ? "请先验证 App 登录邮箱，再使用助手。" : error.message || "发送失败，请稍后重试。", !verificationVisible);
-    } finally { clearTimeout(timer); if (version === generation) { busy = false; controller = null; saveConversation(); setProgress(""); renderMessages(); updateControls(); scrollToEnd(); } }
+    } finally { timer.stop(); if (version === generation) { busy = false; controller = null; saveConversation(); setProgress(""); renderMessages(); updateControls(); scrollToEnd(); } }
   }
   async function connectPlan() {
     if (!plan || busy || planBusy) return;

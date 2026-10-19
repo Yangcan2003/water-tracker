@@ -14,6 +14,9 @@ export function createPlanClient(plugin) {
     } finally { signal?.removeEventListener("abort", cancel); }
   };
   return {
+    // The native layer owns its network deadlines, background lease and retry.
+    // A WebView wall-clock timer cannot safely govern a suspended native call.
+    managesRequestLifetime: true,
     getState: () => plugin.getState(),
     analyzeMeal: (body, signal) => run("analyzeMeal", { body }, signal),
     connect: () => run("connect"),
