@@ -255,7 +255,18 @@ html[data-focus-input="keyboard"] #foodCatalogAdd:focus-visible { outline: 2px s
 .food-delete-button { display: block; min-height: 40px; margin: 10px auto 0; padding: 8px; border: 0; background: transparent; color: #c63a50; font-size: 12px; }
 .food-settings-dialog button:disabled { opacity: .45; }
 
-#foodEnergyUnit { flex: 0 0 62px; width: 62px; min-width: 0; min-height: 32px; margin: 0; padding: 3px; border: 0; border-radius: 7px; background: var(--theme-surface); color: var(--theme-text); font: inherit; font-size: 12px; }
+.food-nutrition-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 8px; }
+.food-nutrition-heading h3 { margin: 0; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+.food-energy-toggle { position: relative; display: flex; flex-shrink: 0; min-width: 0; margin: 0; padding: 0; border: 0; isolation: isolate; }
+.food-energy-toggle::before { position: absolute; inset: 5px 0; z-index: -1; border-radius: 12px; background: var(--theme-subtle); content: ""; }
+#foodCatalogForm .food-energy-toggle label { position: relative; display: grid; align-items: center; min-width: 48px; min-height: 44px; margin: 0; padding: 0 3px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.food-energy-toggle input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.food-energy-toggle span { display: grid; place-items: center; height: 28px; border-radius: 9px; color: var(--theme-muted); font-size: 11px; line-height: 1; font-weight: 500; transition: background-color .15s ease, color .15s ease, box-shadow .15s ease; }
+.food-energy-toggle input:checked + span { background: var(--theme-surface); color: var(--theme-accent); font-weight: 650; box-shadow: 0 1px 3px #00000014; }
+.food-energy-toggle input:focus { outline: none; }
+html[data-focus-input="keyboard"] .food-energy-toggle input:focus-visible + span { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .food-energy-toggle span { transition: none; } }
+
 .food-energy-conversion { margin: -6px 0 16px; color: var(--theme-muted); font-size: 11px; line-height: 1.7; }
 
 .nutrition-more { margin: 14px 0; padding: 0; border-top: 1px solid var(--theme-line); }

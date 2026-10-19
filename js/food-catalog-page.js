@@ -23,6 +23,8 @@ export function createFoodCatalogPage({ storage, showToast }) {
   }
   function renderEnergy(updateValue = false) {
     const input = el("foodValuekcal"), hint = el("foodEnergyConversion");
+    el("foodEnergyValueUnit").textContent = energyUnit;
+    el("foodEnergyUnit").querySelectorAll("input").forEach(radio => { radio.checked = radio.value === energyUnit; });
     input.max = String(foodEnergyFromKcal(FOOD_NUTRIENTS[0].max, energyUnit));
     if (updateValue) input.value = energyKcal === null ? "" : Math.round(foodEnergyFromKcal(energyKcal, energyUnit) * 10) / 10;
     hint.hidden = energyUnit !== "kJ" || energyKcal === null;
@@ -33,8 +35,9 @@ export function createFoodCatalogPage({ storage, showToast }) {
     energyKcal = raw ? foodEnergyToKcal(Number(raw), energyUnit) : null;
     renderEnergy();
   });
-  el("foodEnergyUnit").addEventListener("change", () => {
-    energyUnit = el("foodEnergyUnit").value;
+  el("foodEnergyUnit").addEventListener("change", event => {
+    if (!event.target.matches('input[name="foodEnergyUnit"]')) return;
+    energyUnit = event.target.value;
     // Convert from the unrounded draft to avoid drift from repeated toggles.
     renderEnergy(true);
   });

@@ -20,14 +20,14 @@ const base = process.env.QA_URL || 'http://127.0.0.1:54026';
     const saveFood = async () => { await page.locator('#foodCatalogSave').click(); await page.locator('#foodCatalogEditor').waitFor({ state: 'hidden' }); await page.locator('#foodCatalogDialog').waitFor({ state: 'visible' }); };
     await page.locator('#foodCatalogAdd').click();
     await fillFood('测试燕麦片 <原味>', { kcal: 380, carbsG: 60, proteinG: 13, fatG: 7 });
-    await page.locator('#foodEnergyUnit').selectOption('kJ');
+    await page.locator('#foodEnergyUnit input[value="kJ"]').check();
     assert.equal(await page.locator('#foodValuekcal').inputValue(), '1589.9');
     await page.locator('#foodValuekcal').fill('418.4');
     assert.match(await page.locator('#foodEnergyConversion').textContent(), /100 kcal/);
     for (let i = 0; i < 5; i++) {
-      await page.locator('#foodEnergyUnit').selectOption('kcal');
+      await page.locator('#foodEnergyUnit input[value="kcal"]').check();
       assert.equal(await page.locator('#foodValuekcal').inputValue(), '100');
-      await page.locator('#foodEnergyUnit').selectOption('kJ');
+      await page.locator('#foodEnergyUnit input[value="kJ"]').check();
       assert.equal(await page.locator('#foodValuekcal').inputValue(), '418.4');
     }
     await page.locator('#foodAliases').fill('训练燕麦'); await page.locator('#foodNote').fill('干重，包装营养表');
@@ -44,7 +44,7 @@ const base = process.env.QA_URL || 'http://127.0.0.1:54026';
     assert.equal(await page.locator('[data-food-edit]').count(), 1);
     await page.locator('#foodCatalogSearch').fill('训练燕麦'); assert.equal(await page.locator('[data-food-edit]').count(), 1);
     await page.locator('[data-food-edit]').click();
-    assert.equal(await page.locator('#foodEnergyUnit').inputValue(), 'kcal');
+    assert.equal(await page.locator('#foodEnergyUnit input:checked').inputValue(), 'kcal');
     assert.equal(await page.locator('#foodValuekcal').inputValue(), '100');
     await page.locator('#foodValuekcal').fill('390'); await saveFood();
     assert.equal(await page.locator('[data-food-edit]').count(), 1);
