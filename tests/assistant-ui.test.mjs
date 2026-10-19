@@ -117,3 +117,13 @@ test("large all-history snapshots retain every favorite food, unit, alias, note 
   }
   assert.equal(context.days.reduce((sum, day) => sum + day.meal.nutrition.kcal, 0), 50000);
 });
+
+
+test("assistant receives fiber minimum and sodium limit with units without confusing them with weight-based macros", () => {
+  const profile = { nutritionGoal: { weightKg: 70, ratios: { carbsG: 3, proteinG: 1.6, fatG: 0.8 }, daily: { fiberG: 30, sodiumMg: 1800 } } };
+  const context = buildHealthContext([], { categories: ["meal"], profile });
+  assert.deepEqual(context.dailyNutrientGoals, { fiberG: { value: 30, unit: "g", kind: "minimum" }, sodiumMg: { value: 1800, unit: "mg", kind: "limit" }, source: "saved" });
+  assert.deepEqual(context.dailyNutritionTargetsG, { carbsG: 210, proteinG: 112, fatG: 56 });
+  assert.equal(buildHealthContext([], { categories: ["water"], profile }).dailyNutrientGoals, undefined);
+  assert.equal(buildHealthContext([], { categories: ["meal"] }).dailyNutrientGoals.source, "default");
+});

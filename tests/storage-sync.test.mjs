@@ -59,7 +59,7 @@ test("an unset goal on an upgraded device does not erase a goal saved on another
 });
 
 test("nutrition goals survive local saves, guest upload, cloud refresh and pending offline changes", async () => {
-  const goal = { weightKg: 70, ratios: { carbsG: 3, proteinG: 1.6, fatG: 0.8 } };
+  const goal = { weightKg: 70, ratios: { carbsG: 3, proteinG: 1.6, fatG: 0.8 }, daily: { fiberG: 30, sodiumMg: 1800 } };
   storage.setUser(null, null);
   await storage.updateProfile({ nutritionGoal: goal });
   assert.deepEqual((await storage.getProfile()).nutritionGoal, goal);
@@ -68,7 +68,7 @@ test("nutrition goals survive local saves, guest upload, cloud refresh and pendi
   assert.deepEqual(mock.documents.get("users/test").nutritionGoal, goal);
   assert.deepEqual((await storage.getProfile()).nutritionGoal, goal);
   mock.denied.add(undefined); // Profile path has no collection segment.
-  const changed = { ...goal, weightKg: 72.5 };
+  const changed = { ...goal, weightKg: 72.5, daily: { fiberG: 28, sodiumMg: 1900 } };
   await storage.updateProfile({ nutritionGoal: changed });
   assert.deepEqual(storage.getCachedProfile().nutritionGoal, changed);
   mock.denied.clear();

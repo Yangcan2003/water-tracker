@@ -2,7 +2,7 @@ import { historyRange, inHistoryRange } from "./history-range.js";
 import { measurementHistory } from "./body-measurements.js";
 import { toDateKey } from "./utils.js";
 import { dailyMealNutrition, normalizeMealNutrition } from "./meal-nutrition.js";
-import { nutritionTargets } from "./nutrition-goals.js";
+import { nutritionTargets, dailyNutritionGoals } from "./nutrition-goals.js";
 import { FOOD_NUTRIENTS, normalizeFoodCatalog } from "./food-catalog.js";
 
 export const ASSISTANT_CATEGORIES = [
@@ -62,6 +62,8 @@ export function buildHealthContext(days, { rangeDays = 7, categories = ["water",
   if (selected.includes("meal")) {
     context.todayNutrition = { date: toDateKey(now), ...nutritionSummary(selectedDays.filter(day => day.dateKey === toDateKey(now)).flatMap(day => day.mealRecs || [])) };
     context.dailyNutritionTargetsG = nutritionTargets(profile?.nutritionGoal);
+    const daily = dailyNutritionGoals(profile?.nutritionGoal);
+    context.dailyNutrientGoals = { fiberG: { value: daily.fiberG, unit: "g", kind: "minimum" }, sodiumMg: { value: daily.sodiumMg, unit: "mg", kind: "limit" }, source: profile?.nutritionGoal?.daily ? "saved" : "default" };
     context.units.nutrients = Object.fromEntries(FOOD_NUTRIENTS.map(field => [field.key, field.unit]));
     context.note += " 五项补充营养允许null，代表未知，不是0。nutrientCoverage是各补充指标有数值的条目数，仅合计已知条目；不足entries时不能当作完整日摄入。钠单位mg，糖和膳食纤维等单位g。";
     const columns = ["name", "aliases", "servingAmount", "servingUnit", ...FOOD_NUTRIENTS.map(field => field.key), "note"];

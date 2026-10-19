@@ -1292,7 +1292,7 @@ function renderMeals() {
     E[id].textContent = mealDayLoading || totals[key] === null ? "—" : totals[key].toLocaleString("zh-CN", { maximumFractionDigits: 1 });
   });
   document.getElementById("mealDailyMore").hidden = mealDayLoading || !totals.entries;
-  document.getElementById("mealDailyExtra").innerHTML = EXTRA_NUTRIENTS.map(field => `<div><dt>${field.label}</dt><dd>${totals[field.key] == null ? "—" : totals[field.key]} <small>${field.unit}</small><small> · ${totals.nutrientCoverage[field.key]} / ${totals.entries} 条</small></dd></div>`).join("");
+  document.getElementById("mealDailyExtra").innerHTML = EXTRA_NUTRIENTS.filter(field => !["fiberG", "sodiumMg"].includes(field.key)).map(field => `<div><dt>${field.label}</dt><dd>${totals[field.key] == null ? "—" : totals[field.key]} <small>${field.unit}</small><small> · ${totals.nutrientCoverage[field.key]} / ${totals.entries} 条</small></dd></div>`).join("");
   E.mealDailyCoverage.textContent = mealDayLoading ? "正在读取…" : !totals.entries ? "尚无记录" : `已计入 ${totals.counted} / ${totals.entries} 条`;
   E.mealDailyNote.textContent = mealDayLoading ? "正在读取已保存的营养记录…" : !totals.entries ? "添加饮食并识别营养后，显示当天的摄入合计。"
     : !totals.counted ? "目前记录尚无营养数据；可在编辑记录中 AI 识别。"
