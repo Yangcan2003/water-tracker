@@ -12,6 +12,10 @@ export function createNutritionGoalsPage({ storage, showToast }) {
   const readDraft = () => normalizeNutritionGoal({ weightKg: weight.value.trim() ? Number(weight.value) : null,
     ratios: Object.fromEntries(GOAL_MACROS.map(({ key, id }) => [key, el(`nutritionGoal${id}`).value.trim() ? Number(el(`nutritionGoal${id}`).value) : null])) });
   function preview() {
+    const latest = latestWeight(), draftWeight = weight.value.trim() ? Number(weight.value) : null;
+    const useLatest = el("nutritionUseLatestWeight");
+    useLatest.hidden = !latest || draftWeight === latest.weight;
+    useLatest.textContent = latest ? `使用最近体重 ${format(latest.weight)} kg` : "使用最近体重";
     const targets = nutritionTargets(readDraft());
     for (const { key, id } of GOAL_MACROS) el(`nutritionPreview${id}`).textContent = format(targets?.[key]);
   }
@@ -47,8 +51,6 @@ export function createNutritionGoalsPage({ storage, showToast }) {
     const goal = currentGoal(), latest = latestWeight();
     weight.value = goal?.weightKg ?? latest?.weight ?? "";
     for (const { key, id } of GOAL_MACROS) el(`nutritionGoal${id}`).value = goal?.ratios[key] ?? DEFAULT_NUTRITION_RATIOS[key];
-    el("nutritionUseLatestWeight").hidden = !latest;
-    el("nutritionUseLatestWeight").textContent = latest ? `使用最近体重 ${format(latest.weight)} kg` : "使用最近体重";
     message.textContent = "";
     editorGeneration = storage.sync.generation;
     preview(); dialog.showModal();
@@ -72,6 +74,6 @@ export function createNutritionGoalsPage({ storage, showToast }) {
     finally { saving = false; save.disabled = false; }
   });
   dialog.addEventListener("click", event => { const b = dialog.getBoundingClientRect(); if (event.target === dialog && (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom)) dialog.close(); });
-  window.addEventListener("body-measurements-change", () => render());
+  window.addEventListener("body-measurements-change", () => { render(); if (dialog.open) preview(); });
   return { render };
 }
