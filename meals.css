@@ -210,6 +210,30 @@ html.meal-editor-active { overflow: hidden; }
   .nutrition-goal-preview dd { font-size: 20px; }
 }
 
+.nutrition-daily-section { min-width: 0; margin: 0; padding: 0; border: 0; }
+.nutrition-daily-section legend { margin-bottom: 10px; padding: 0; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+.nutrition-daily-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+#nutritionGoalForm .nutrition-daily-inputs label { margin: 0; padding: 12px; border: 1px solid var(--theme-line); border-radius: 14px; font-size: 12px; }
+.nutrition-daily-inputs label > small { display: block; margin-top: 5px; color: var(--theme-muted); font-size: 10px; font-weight: 400; }
+.nutrition-daily-inputs label > span { display: flex; align-items: baseline; gap: 6px; margin-top: 10px; }
+.nutrition-daily-inputs input { width: 100%; min-width: 0; min-height: 36px; margin: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--theme-text); font-size: 22px; font-weight: 650; }
+.nutrition-daily-inputs label:focus-within { border-color: var(--theme-accent); }
+.nutrition-daily-inputs span > small { color: var(--theme-muted); font-size: 11px; }
+.diary-daily-guidance { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.diary-nutrient-goal { min-width: 0; padding: 13px 12px; border: 1px solid var(--theme-line); border-radius: 14px; }
+.diary-nutrient-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.diary-nutrient-heading h3 { margin: 0; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+.diary-nutrient-heading > span { color: var(--theme-muted); font-size: 9px; }
+.diary-nutrient-intake { margin: 12px 0 5px; color: var(--theme-text); font-size: 20px; font-variant-numeric: tabular-nums; }
+.diary-nutrient-intake small { color: var(--theme-muted); font-size: 10px; }
+.diary-nutrient-target, .diary-nutrient-status { margin: 0; color: var(--theme-muted); font-size: 10px; line-height: 1.6; }
+.diary-nutrient-progress { height: 4px; margin: 12px 0 8px; overflow: hidden; border-radius: 4px; background: var(--theme-line); }
+.diary-nutrient-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--theme-accent); }
+.diary-nutrient-coverage { display: block; margin-top: 5px; color: var(--theme-muted); font-size: 9px; line-height: 1.6; }
+.diary-nutrient-goal[data-state="near"] .diary-nutrient-status, .diary-nutrient-goal[data-state="limit"] .diary-nutrient-status { color: var(--theme-accent); font-weight: 600; }
+.diary-nutrient-goal[data-state="limit"] .diary-nutrient-progress > span { background: var(--theme-accent); }
+@media (max-width: 360px) { .diary-daily-guidance { gap: 8px; } .diary-nutrient-goal { padding: 12px 10px; } }
+
 .account-nutrition-targets { display: flex; flex-wrap: wrap; gap: 3px 10px; }
 .account-nutrition-targets b { font-weight: 500; }
 .food-settings-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px); margin-block: auto; padding: 0; overflow: hidden; border: 1px solid var(--theme-line); border-radius: 24px; background: var(--theme-surface); }
