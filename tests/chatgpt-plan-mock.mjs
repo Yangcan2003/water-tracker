@@ -4,13 +4,22 @@ export const chatGPTPlan = {
   async connect() { connected = true; return this.getState(); },
   async getState() { return { connected, account: "会员测试账号", model: "GPT" }; },
   async disconnect() { connected = false; return { connected, revoked: true }; },
-  async request(_, { method = "GET", body } = {}) {
+  async request(_, { method = "GET", body, signal, onProgress } = {}) {
     if (method === "GET") return { providers: [{ id: "openai", configured: connected }], connected, account: "会员测试账号" };
     if (!connected) throw Object.assign(new Error("请先连接 ChatGPT"), { code: "PLAN_AUTH_REQUIRED" });
     if (body.messages.at(-1).content.includes("等待测试")) return new Promise(() => {});
     if (body.messages.at(-1).content.includes("额度测试")) throw Object.assign(new Error("ChatGPT 会员用量已达当前限制，请稍后重试或在 ChatGPT 中查看用量"), { code: "PLAN_LIMIT" });
     await new Promise(resolve => setTimeout(resolve, 400));
     const question = body.messages.at(-1).content;
+    if (question.includes("流式测试")) {
+      const reasoningSummary = "正在核对本轮记录的日期、营养单位和缺失项。这里是模拟的公开思考摘要，用于验证实时显示。";
+      const reply = "根据这份**模拟记录**，先看今天的营养合计：\n\n| 指标 | 已记录 |\n|---|---:|\n| 膳食纤维 | 18 g |\n| 钠 | 1200 mg |\n\n这些数值只用于界面测试，缺失记录不能视为零摄入。";
+      const pause = async () => { await new Promise(resolve => setTimeout(resolve, 450)); if (signal?.aborted) throw new DOMException("已停止", "AbortError"); };
+      for (let i = 8; i < reasoningSummary.length + 8; i += 8) { await pause(); onProgress?.({ reply: "", reasoningSummary: reasoningSummary.slice(0, i) }); }
+      for (let i = 5; i < reply.length + 5; i += 5) { await pause(); onProgress?.({ reply: reply.slice(0, i), reasoningSummary }); }
+      await pause();
+      return { reply, reasoningSummary, actions: [] };
+    }
     if (question.includes("常吃新增测试")) return { reply: `已根据本次 ${body.photos?.length || 0} 张图片整理食物库条目（模拟识别）。请核对每 100 g 的数值，确认后保存；这不会记入今天的饮食。`, actions: [{ operation: "create", category: "food", date: null, time: null, ref: null, values: { name: "测试原味燕麦", servingAmount: 100, servingUnit: "g", kcal: 380, carbsG: 60, proteinG: 13, fatG: 7, fiberG: 8, sodiumMg: 12, saturatedFatG: 1, sugarsG: 2, addedSugarsG: null, note: "模拟标签；添加糖未标注", aliases: "测试燕麦" } }] };
     if (question.includes("常吃修改测试")) {
       const target = body.actionCatalog.records.find(record => record.category === "food" && record.values.name === "测试原味燕麦");

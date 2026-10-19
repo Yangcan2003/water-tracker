@@ -75,7 +75,14 @@ import Foundation
         rejects { _ = try ChatGPTCore.mealInput(photos: ["data:image/jpeg;base64,not-valid!"], description: "") }
         rejects { _ = try ChatGPTCore.mealInput(photos: Array(repeating: "data:image/jpeg;base64,YQ==", count: 4), description: "") }
         var stream = ChatGPTCore.Stream()
+        var previews: [(String, String)] = []
+        stream.onUpdate = { previews.append(($0, $1)) }
+        try stream.consume("data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"private-reasoning\"}\n")
+        precondition(previews.isEmpty)
+        try stream.consume("data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"公开思考摘要\"}\n")
+        precondition(previews.last!.0.isEmpty && previews.last!.1 == "公开思考摘要")
         try stream.consume("data: {\"type\":\"response.output_text.delta\",\"delta\":\"连接成功\"}\n")
+        precondition(previews.last!.0 == "连接成功" && !stream.completed)
         rejects { _ = try stream.result() }
         try stream.consume("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n")
         let completed = try stream.result()
@@ -88,6 +95,11 @@ import Foundation
         for byte in events.utf8 { try byteStream.feed(byte) }
         let byteReply = try byteStream.finish()
         precondition(byteReply == "连接成功")
+        precondition(ChatGPTCore.summaryUnsupported(Data(#"{"error":{"param":"reasoning.summary","code":"unsupported_parameter"}}"#.utf8), status: 400))
+        for status in [401, 403, 429, 500] {
+            precondition(!ChatGPTCore.summaryUnsupported(Data(#"{"error":{"param":"reasoning.summary","code":"unsupported_parameter"}}"#.utf8), status: status))
+        }
+        precondition(!ChatGPTCore.summaryUnsupported(Data(#"{"error":{"param":"text.format","code":"unsupported_parameter"}}"#.utf8), status: 400))
         var interrupted = ChatGPTCore.Stream()
         for byte in "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n".utf8 { try interrupted.feed(byte) }
         rejects { _ = try interrupted.finish() }

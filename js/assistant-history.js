@@ -11,6 +11,7 @@ export function normalizeAssistantHistory(value) {
     messages: item.messages.filter(message => ["user", "assistant"].includes(message?.role) && typeof message.content === "string" && message.content.trim()).map(message => ({
       role: message.role, content: message.content.slice(0, message.role === "user" ? 2000 : 6000),
       ...(message.role === "assistant" && typeof message.source === "string" ? { source: message.source.slice(0, 300) } : {}),
+      ...(message.role === "assistant" && typeof message.reasoningSummary === "string" && message.reasoningSummary ? { reasoningSummary: message.reasoningSummary.slice(0, 4000) } : {}),
       ...(message.role === "user" && message.state === "failed" ? { state: "failed" } : {}),
       ...(message.role === "user" && Array.isArray(message.photoIds) ? { photoIds: message.photoIds.filter(id => typeof id === "string" && /^[a-f0-9]{64}$/.test(id)).slice(0, 3) } : {}),
       ...(message.role === "assistant" && typeof message.actionNotice === "string" ? { actionNotice: message.actionNotice.slice(0, 1200) } : {}),

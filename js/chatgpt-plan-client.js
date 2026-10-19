@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { previewAssistantReply } from "./assistant-stream.js";
 
 // Native credentials never cross the bridge. Only state and finished replies do.
 export const usesChatGPTPlan = Capacitor.getPlatform() === "ios";
@@ -23,6 +24,24 @@ export function createPlanClient(plugin) {
       return result;
     } finally { signal?.removeEventListener("abort", cancel); }
   };
+  const chat = async (body, signal, onProgress) => {
+    let listener, listening = true;
+    const requestID = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      if (signal?.aborted) throw new DOMException("请求已取消", "AbortError");
+      if (onProgress && plugin.addListener) {
+        listener = await plugin.addListener("chatProgress", event => {
+          if (!listening || signal?.aborted || event.requestID !== requestID) return;
+          onProgress({ reply: body?.interactive ? previewAssistantReply(event.text) : String(event.text || "").slice(0, 6000),
+            reasoningSummary: typeof event.reasoningSummary === "string" ? event.reasoningSummary.slice(0, 4000) : "" });
+        });
+      }
+      return await run("chat", { body: nativeChatBody(body), ...(listener ? { requestID } : {}) }, signal);
+    } finally {
+      listening = false;
+      if (listener) { try { await listener.remove(); } catch {} }
+    }
+  };
   return {
     // The native layer owns its network deadlines, background lease and retry.
     // A WebView wall-clock timer cannot safely govern a suspended native call.
@@ -31,9 +50,9 @@ export function createPlanClient(plugin) {
     analyzeMeal: (body, signal) => run("analyzeMeal", { body }, signal),
     connect: () => run("connect"),
     disconnect: () => run("disconnect"),
-    request: (_, { method = "GET", body, signal } = {}) => method === "GET"
+    request: (_, { method = "GET", body, signal, onProgress } = {}) => method === "GET"
       ? plugin.getState().then(state => ({ providers: [{ id: "openai", configured: state.connected }], ...state }))
-      : run("chat", { body: nativeChatBody(body) }, signal),
+      : chat(body, signal, onProgress),
   };
 }
 export const chatGPTPlan = usesChatGPTPlan ? createPlanClient(registerPlugin("ChatGPTPlan")) : null;

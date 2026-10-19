@@ -36,6 +36,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   let planBusy = false, verificationVisible = false, verificationBusy = false, verificationSentAt = 0, progress = "", copyTimer;
   let conversations = [], activeId = null, historyOwner = null, historyReadable = true;
   let attachments = [], photoBusy = false, actionBusy = false;
+  let live = { reply: "", reasoningSummary: "" }, streamFrame = null;
   root.innerHTML = `
     <header class="assistant-toolbar"><button class="assistant-title" id="assistantAccountToggle" type="button" aria-expanded="false" aria-controls="assistantAccountMenu"><strong>健康助手</strong>${svg("down")}</button><div class="assistant-toolbar-actions"><button class="assistant-icon-button" id="assistantHistoryToggle" type="button" aria-label="历史对话" aria-expanded="false" aria-controls="assistantHistoryPanel">${svg("history")}</button><button class="assistant-icon-button" id="assistantNewChat" type="button" aria-label="开始新对话" title="新对话">${svg("edit")}</button></div>
       <section class="assistant-account-menu" id="assistantAccountMenu" aria-label="助手账号" hidden><div class="assistant-menu-heading"><strong>ChatGPT</strong><button class="assistant-icon-button" id="assistantCloseAccount" type="button" aria-label="关闭账号菜单">${svg("close")}</button></div><p id="assistantConnection" role="status">正在检查连接</p><p id="assistantPlanLabel">由 OpenAI 提供</p><button id="assistantConnectPlan" type="button">连接 ChatGPT</button><div id="assistantPlanAccount" hidden><a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">在 ChatGPT 中管理会员</a><button id="assistantDisconnectPlan" type="button">断开连接</button></div><button id="assistantLogin" type="button" hidden>登录 App</button></section>
@@ -100,9 +101,31 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   }
   function renderMessages() {
     const content = [...messages, ...(pending ? [{ role: "user", content: pending.question, photos: pending.photos, state: pending.state }] : [])];
-    conversation.innerHTML = content.map((message, index) => `<article class="assistant-message" data-role="${message.role}"><span class="assistant-message-author">${message.role === "user" ? "你" : "健康助手"}</span>${photoMarkup(message.photos)}<div class="assistant-message-content">${message.role === "user" ? esc(message.content) : formatAssistantText(message.content)}</div>${message.state === "failed" ? '<small class="assistant-message-status">未发送完成 · 问题已保留</small>' : ""}${message.source ? `<small class="assistant-message-source">${esc(message.source)}</small>` : ""}${message.role === "assistant" ? actionMarkup(message, index) + `<button class="assistant-copy" type="button" data-copy-answer="${index}" aria-label="复制这条回答">${svg("copy")}<span>复制</span></button>` : ""}</article>`).join("") + (busy && pending ? `<div class="assistant-thinking" role="status"><span class="assistant-thinking-dot"></span><span>${esc(progress || "正在思考")}</span></div>` : "");
+    conversation.innerHTML = content.map((message, index) => `<article class="assistant-message" data-role="${message.role}"><span class="assistant-message-author">${message.role === "user" ? "你" : "健康助手"}</span>${photoMarkup(message.photos)}${message.role === "assistant" ? reasoningMarkup(message.reasoningSummary) : ""}<div class="assistant-message-content">${message.role === "user" ? esc(message.content) : formatAssistantText(message.content)}</div>${message.state === "failed" ? '<small class="assistant-message-status">未发送完成 · 问题已保留</small>' : ""}${message.source ? `<small class="assistant-message-source">${esc(message.source)}</small>` : ""}${message.role === "assistant" ? actionMarkup(message, index) + `<button class="assistant-copy" type="button" data-copy-answer="${index}" aria-label="复制这条回答">${svg("copy")}<span>复制</span></button>` : ""}</article>`).join("") + (pending && (busy || live.reply || live.reasoningSummary) ? liveMarkup() : "");
     find("#assistantIntro").hidden = content.length > 0;
     keyboard.contentChanged();
+  }
+  function reasoningMarkup(summary = "", active = false) {
+    if (!summary && !active) return "";
+    return `<details class="assistant-reasoning" ${!summary ? "hidden" : ""} ${active && !live.reply ? "open" : ""}><summary>思考摘要${svg("down")}</summary><div class="assistant-reasoning-content">${formatAssistantText(summary)}</div></details>`;
+  }
+  function liveMarkup() {
+    return `<article class="assistant-message assistant-live" data-role="assistant" aria-live="off"><span class="assistant-message-author">健康助手</span>${reasoningMarkup(live.reasoningSummary, true)}<div class="assistant-message-content assistant-live-content" ${!live.reply ? "hidden" : ""}>${formatAssistantText(live.reply)}</div><div class="assistant-thinking" role="status">${busy ? '<span class="assistant-thinking-dot"></span>' : ""}<span>${esc(busy ? live.reply ? "正在回答…" : progress || "正在思考…" : "回答未完成，可重试")}</span></div></article>`;
+  }
+  function updateLiveMessage() {
+    const article = conversation.querySelector(".assistant-live");
+    if (!article) return;
+    const follow = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
+    const answer = article.querySelector(".assistant-live-content"), details = article.querySelector(".assistant-reasoning");
+    const startsAnswer = answer.hidden && !!live.reply, startsSummary = details.hidden && !!live.reasoningSummary;
+    answer.hidden = !live.reply; answer.innerHTML = formatAssistantText(live.reply);
+    details.hidden = !live.reasoningSummary;
+    details.querySelector(".assistant-reasoning-content").innerHTML = formatAssistantText(live.reasoningSummary);
+    if (startsSummary && !live.reply) details.open = true;
+    if (startsAnswer) details.open = false;
+    setProgress(live.reply ? "正在回答…" : "正在思考…");
+    article.querySelector(".assistant-thinking span:last-child").textContent = live.reply ? "正在回答…" : "正在思考…";
+    if (follow) scroll.scrollTop = scroll.scrollHeight;
   }
   function scrollToEnd() { requestAnimationFrame(() => scroll.scrollTo({ top: scroll.scrollHeight, behavior: "smooth" })); }
   function closePanel(panelID, buttonID) {
@@ -143,6 +166,8 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     for (const message of [...messages, ...(pending ? [pending] : [])]) if (message.photoIds?.length) void storage.mealPhotos.get(message.photoIds).then(photos => { if (version === generation) { message.photos = photos; renderMessages(); } }).catch(() => {});
   }
   function clearConversation() {
+    if (streamFrame != null) cancelAnimationFrame(streamFrame); streamFrame = null;
+    live = { reply: "", reasoningSummary: "" };
     generation++; controller?.abort("reset"); controller = null; busy = false; messages = []; pending = null; attachments = []; renderAttachments(); verificationVisible = false; verificationBusy = false;
     find("#assistantVerificationStatus").textContent = ""; setProgress(""); renderMessages(); updateControls(); showError();
   }
@@ -184,6 +209,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     showError(); const user = getUser(), refreshToken = verificationVisible, version = generation;
     verificationVisible = false; busy = true; controller = new AbortController(); const active = controller, wait = promise => awaitAssistantOperation(promise, active.signal);
     if (pending && pending.question !== question) messages.push({ role: "user", content: pending.question, state: "failed" });
+    live = { reply: "", reasoningSummary: "" };
     pending = { question, photos: selectedPhotos, state: "sending" }; attachments = []; renderAttachments(); input.value = ""; resizeInput(); saveConversation(); setProgress("正在准备回答…"); updateControls(); renderMessages(); scrollToEnd();
     const timer = createForegroundDeadline(65000, () => active.abort("timeout"));
     try {
@@ -209,7 +235,15 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       while (history.reduce((sum, item) => sum + item.content.length, question.length) > 20000) history.splice(0, 2);
       setProgress("正在思考…"); renderMessages();
       if (plan?.managesRequestLifetime) timer.stop();
-      const result = await wait(request(backend, { method: "POST", token, signal: active.signal, body: { provider: "openai", messages: [...history, { role: "user", content: question }], shareRecords: share.checked, context, interactive: true, photos: selectedPhotos, actionCatalog: catalog.data } }));
+      const onProgress = value => {
+        if (version !== generation || getUser()?.uid !== user.uid || active.signal.aborted || !busy) return;
+        live = { reply: String(value.reply || "").slice(0, 6000), reasoningSummary: String(value.reasoningSummary || "").slice(0, 4000) };
+        if (streamFrame == null) streamFrame = requestAnimationFrame(() => {
+          streamFrame = null;
+          if (version === generation && getUser()?.uid === user.uid && !active.signal.aborted && busy) updateLiveMessage();
+        });
+      };
+      const result = await wait(request(backend, { method: "POST", token, signal: active.signal, onProgress, body: { provider: "openai", messages: [...history, { role: "user", content: question }], shareRecords: share.checked, context, interactive: true, photos: selectedPhotos, actionCatalog: catalog.data } }));
       if (version !== generation || getUser()?.uid !== user.uid) return;
       const parsed = parseAssistantResponse({ reply: result.reply, actions: result.actions || [] });
       const proposals = parsed.actions.map(action => {
@@ -217,7 +251,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
         catch (error) { return { state: "invalid", error: error.message }; }
       });
       const source = context ? `${new Date(context.snapshot.generatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 读取 · ${context.range.startDate} — ${context.range.endDate} · ${context.summarized ? "健康记录摘要" : "健康记录"}${context.foodCatalog?.count ? ` · 常吃食物 ${context.foodCatalog.count} 种` : ""}` : "";
-      messages.push({ role: "user", content: question, photos: selectedPhotos, photoIds: pending.photoIds }, { role: "assistant", content: parsed.reply.slice(0, 6000), proposals, actionNotice: proposals.length ? "包含待确认的记录变更；重新打开后请重新提问以核对最新记录。" : "", source: [source, result.incomplete || parsed.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
+      messages.push({ role: "user", content: question, photos: selectedPhotos, photoIds: pending.photoIds }, { role: "assistant", content: parsed.reply.slice(0, 6000), reasoningSummary: String(result.reasoningSummary || live.reasoningSummary || "").slice(0, 4000), proposals, actionNotice: proposals.length ? "包含待确认的记录变更；重新打开后请重新提问以核对最新记录。" : "", source: [source, result.incomplete || parsed.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
     } catch (error) {
       if (version !== generation) return;
       if (pending) pending.state = "failed";
@@ -226,7 +260,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       verificationVisible = error.code === "EMAIL_VERIFICATION_REQUIRED" && typeof verifyEmail === "function";
       if (plan && error.code === "PLAN_AUTH_REQUIRED") { connection = "disconnected"; checkedAt = 0; }
       showError(active.signal.aborted ? active.signal.reason === "user" ? "已停止回答，问题仍保留在输入框中。" : "等待超时，问题已保留，请重试。" : verificationVisible ? "请先验证 App 登录邮箱，再使用助手。" : error.message || "发送失败，请稍后重试。", !verificationVisible);
-    } finally { timer.stop(); if (version === generation) { busy = false; controller = null; saveConversation(); setProgress(""); renderMessages(); updateControls(); scrollToEnd(); } }
+    } finally { timer.stop(); if (version === generation) { if (streamFrame != null) cancelAnimationFrame(streamFrame); streamFrame = null; busy = false; controller = null; saveConversation(); setProgress(""); renderMessages(); updateControls(); scrollToEnd(); } }
   }
   async function connectPlan() {
     if (!plan || busy || planBusy) return;

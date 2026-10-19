@@ -33,3 +33,9 @@ test("storage failures surface instead of silently discarding conversation histo
   assert.throws(() => history.load("a"), SyntaxError);
   assert.throws(() => history.save("a", { conversations: [conversation] }), /quota/);
 });
+test("public reasoning summaries survive reopening but raw reasoning is never persisted", () => {
+  const { persistence, data } = fixture(), history = createAssistantHistory(persistence);
+  history.save("a", { conversations: [{ ...conversation, messages: [{ role: "assistant", content: "回答", reasoningSummary: "公开摘要", reasoning: "private-raw-reasoning" }] }] });
+  assert.equal(history.load("a").conversations[0].messages[0].reasoningSummary, "公开摘要");
+  assert.ok(![...data.values()][0].includes("private-raw-reasoning"));
+});

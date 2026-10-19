@@ -209,6 +209,8 @@ enum ChatGPTCore {
 
     struct Stream {
         var text = "", completed = false, bytes = 0
+        var reasoningSummary = ""
+        var onUpdate: ((String, String) -> Void)?
         private var line = Data(), block = ""
         mutating func feed(_ byte: UInt8) throws {
             bytes += 1
@@ -238,6 +240,15 @@ enum ChatGPTCore {
                 guard !completed, let delta = event["delta"] as? String else { throw fail("模型响应格式无效") }
                 text += delta
                 guard text.utf16.count <= 24000 else { throw fail("回答较长，请缩小问题后重试") }
+                onUpdate?(text, reasoningSummary)
+            }
+            // Only the provider's public summary is exposed, never raw reasoning.
+            if type == "response.reasoning_summary_text.delta", !completed, let delta = event["delta"] as? String {
+                reasoningSummary = String((reasoningSummary + delta).prefix(4000))
+                onUpdate?(text, reasoningSummary)
+            }
+            if type == "response.reasoning_summary_part.added", !completed, !reasoningSummary.isEmpty {
+                reasoningSummary += "\n\n"
             }
             if type == "response.completed" {
                 guard let response = event["response"] as? [String: Any], response["status"] as? String == "completed" else { throw fail("模型回答未完成") }
@@ -248,6 +259,13 @@ enum ChatGPTCore {
             guard completed, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw fail("回答未完整接收，请重试；输入内容已保留", "PLAN_INTERRUPTED") }
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
+    }
+    static func summaryUnsupported(_ data: Data, status: Int) -> Bool {
+        guard status == 400, let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = body["error"] as? [String: Any], let param = error["param"] as? String,
+              param == "reasoning" || param.hasPrefix("reasoning."),
+              ["unsupported_parameter", "unsupported_value"].contains(error["code"] as? String ?? "") else { return false }
+        return true
     }
 }
 

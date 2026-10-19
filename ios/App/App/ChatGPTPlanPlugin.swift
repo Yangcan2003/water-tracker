@@ -60,6 +60,8 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
     private var backgroundRevision = 0
     private var foregroundWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
     private var lifecycleObservers: [NSObjectProtocol] = []
+    private var latestChatProgress: [String: Any]?
+    private var lastChatProgressAt = Date.distantPast
     private lazy var network: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil; config.httpCookieStorage = nil; config.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -73,6 +75,7 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
                 guard let self = self else { return }
                 let waiters = self.foregroundWaiters; self.foregroundWaiters.removeAll()
                 for waiter in waiters.values { waiter.resume() }
+                if let progress = self.latestChatProgress { self.notifyListeners("chatProgress", data: progress) }
             }
         ]
     }
@@ -104,7 +107,7 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
         return end
     }
 
-    @MainActor private func recoveringInference(input: [[String: Any]], instructions: String, format: [String: Any]?) async throws -> (String, String) {
+    @MainActor private func recoveringInference(input: [[String: Any]], instructions: String, format: [String: Any]?, onProgress: ((String, String) -> Void)? = nil) async throws -> (String, String) {
         let recovery = PlanInferenceRecovery(isActive: { UIApplication.shared.applicationState == .active },
             backgroundRevision: { self.backgroundRevision }, waitUntilActive: { try await self.waitUntilActive() },
             protect: { self.protectInference(expired: $0) })
@@ -112,7 +115,8 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
             let record = try await self.credentials()
             return (record.accessToken!, try await self.model(token: record.accessToken!))
         }, send: { token, model in
-            let reply = try await self.inference(token: token, model: model, input: input, instructions: instructions, format: format)
+            onProgress?("", "") // A background retry replaces its interrupted draft.
+            let reply = try await self.inference(token: token, model: model, input: input, instructions: instructions, format: format, onProgress: onProgress)
             return (reply, model)
         })
     }
@@ -199,6 +203,20 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
         // Capture only the selected chat/context, never the Firebase ID token.
         let body = call.getObject("body") ?? [:]
         start(call, deliverOnForeground: true) {
+            let requestID = call.getString("requestID")
+            var reasoningSummary = ""
+            defer { self.latestChatProgress = nil }
+            let onProgress: ((String, String) -> Void)? = requestID.map { id in
+                return { text, summary in
+                    reasoningSummary = summary
+                    self.latestChatProgress = ["requestID": id, "text": text, "reasoningSummary": summary]
+                    let now = Date()
+                    guard UIApplication.shared.applicationState == .active,
+                          (text.isEmpty && summary.isEmpty) || now.timeIntervalSince(self.lastChatProgressAt) >= 0.08 else { return }
+                    self.lastChatProgressAt = now
+                    self.notifyListeners("chatProgress", data: self.latestChatProgress!)
+                }
+            }
             guard let messages = body["messages"] as? [[String: Any]], (1...16).contains(messages.count), messages.count % 2 == 1 else { throw ChatGPTCore.fail("对话格式无效") }
             var input: [[String: Any]] = [], total = 0
             for (index, message) in messages.enumerated() {
@@ -231,13 +249,13 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
                     input[input.count - 1]["content"] = [["type": "input_text", "text": question]] + images
                 }
             }
-            let (reply, model) = try await self.recoveringInference(input: input, instructions: Self.healthInstructions + (interactive ? "\n" + ChatGPTCore.assistantActionInstructions : ""), format: interactive ? ChatGPTCore.assistantResponseFormat : nil)
+            let (reply, model) = try await self.recoveringInference(input: input, instructions: Self.healthInstructions + (interactive ? "\n" + ChatGPTCore.assistantActionInstructions : ""), format: interactive ? ChatGPTCore.assistantResponseFormat : nil, onProgress: onProgress)
             self.modelName = model
             if interactive {
                 guard let data = reply.data(using: .utf8), let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let text = result["reply"] as? String, !text.isEmpty, let actions = result["actions"] as? [[String: Any]], actions.count <= 8 else { throw ChatGPTCore.fail("回答格式未完整，没有修改任何记录，请重试") }
-                return ["reply": text, "actions": actions, "model": model]
+                return ["reply": text, "actions": actions, "model": model, "reasoningSummary": reasoningSummary]
             }
-            return ["reply": reply, "model": model]
+            return ["reply": reply, "model": model, "reasoningSummary": reasoningSummary]
         }
     }
     @objc func analyzeMeal(_ call: CAPPluginCall) {
@@ -316,10 +334,11 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
         guard let models = result["models"] as? [[String: Any]], let first = models.first(where: { $0["visibility"] as? String == "list" && $0["slug"] is String }), let slug = first["slug"] as? String, !slug.isEmpty else { throw ChatGPTCore.fail("此账号暂未提供可用模型") }
         return slug
     }
-    @MainActor private func inference(token: String, model: String, input: [[String: Any]], instructions: String?, format: [String: Any]? = nil) async throws -> String {
+    @MainActor private func inference(token: String, model: String, input: [[String: Any]], instructions: String?, format: [String: Any]? = nil, onProgress: ((String, String) -> Void)? = nil, includeSummary: Bool = true) async throws -> String {
         var request = URLRequest(url: URL(string: ChatGPTCore.resource + "/responses")!); request.httpMethod = "POST"
         request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var body: [String: Any] = ["model": model, "input": input, "store": false, "stream": true]
+        if onProgress != nil && includeSummary { body["reasoning"] = ["summary": "auto"] }
         if let instructions = instructions { body["instructions"] = instructions }
         if let format = format { body["text"] = ["format": format]; body["max_output_tokens"] = format["name"] as? String == "health_assistant" ? 8192 : 4096 }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -328,9 +347,13 @@ public class ChatGPTPlanPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
         guard (200..<300).contains(response.statusCode) else {
             var data = Data()
             for try await byte in bytes { data.append(byte); if data.count >= 16000 { break } }
+            if onProgress != nil && includeSummary && ChatGPTCore.summaryUnsupported(data, status: response.statusCode) {
+                return try await inference(token: token, model: model, input: input, instructions: instructions, format: format, onProgress: onProgress, includeSummary: false)
+            }
             throw ChatGPTCore.providerError(data, status: response.statusCode)
         }
         var stream = ChatGPTCore.Stream()
+        stream.onUpdate = onProgress
         // AsyncBytes.lines omits blank lines; parse bytes to preserve SSE boundaries.
         for try await byte in bytes {
             try Task.checkCancellation()
