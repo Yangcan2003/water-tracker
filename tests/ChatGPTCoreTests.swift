@@ -10,6 +10,22 @@ import Foundation
         let claims = try ChatGPTCore.identity(valid, jwks: jwks, clientID: "oaiapp_test", nonce: "test-nonce", now: now)
         precondition(claims["sub"] as? String == "fake-subject")
         func rejects(_ operation: () throws -> Void) { do { try operation(); fatalError("Unexpected success") } catch {} }
+        let bridgeContext = fixture["bridgeContext"] as! String
+        let (snapshot, snapshotText) = try ChatGPTCore.chatData(bridgeContext, error: "invalid context")
+        precondition(snapshotText == bridgeContext && snapshotText.utf16.count <= 18000)
+        precondition((snapshot["days"] as! [Any]).count > 15)
+        let oldEncoding = try JSONSerialization.data(withJSONObject: snapshot, options: [.sortedKeys])
+        precondition(String(data: oldEncoding, encoding: .utf8)!.utf16.count > 18000)
+        let bridgeCatalog = fixture["bridgeCatalog"] as! String
+        let (catalog, catalogText) = try ChatGPTCore.chatData(bridgeCatalog, error: "invalid catalog")
+        precondition(catalogText == bridgeCatalog && (catalog["records"] as! [Any]).count == 1)
+        let boundary = "{\"note\":\"" + String(repeating: "膳", count: 17989) + "\"}"
+        precondition(boundary.utf16.count == 18000)
+        _ = try ChatGPTCore.chatData(boundary, error: "too large")
+        _ = try ChatGPTCore.chatData(["note": "legacy object", "kcal": 100], error: "invalid")
+        for invalidData: Any in [boundary + " ", "{\"bad\":NaN}", "{", "[]", "true", "null", "\"text\"", [1, 2], true] {
+            rejects { _ = try ChatGPTCore.chatData(invalidData, error: "invalid") }
+        }
         for token in fixture["invalid"] as! [String] {
             rejects { _ = try ChatGPTCore.identity(token, jwks: jwks, clientID: "oaiapp_test", nonce: "test-nonce", now: now) }
         }

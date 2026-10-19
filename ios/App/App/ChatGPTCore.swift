@@ -14,6 +14,26 @@ enum ChatGPTCore {
     static let resource = "https://api.openai.com/v1"
     static let scopes = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"
     static func fail(_ text: String, _ code: String = "PLAN_ERROR") -> PlanError { .message(text, code) }
+    // Match JSON.stringify's UTF-16 budget, retaining its exact decimal text.
+    // Decode for validation/permission checks, but never re-encode bridge text.
+    static func chatData(_ value: Any, error: String) throws -> (object: [String: Any], text: String) {
+        let data: Data
+        let text: String
+        if let serialized = value as? String {
+            guard serialized.utf16.count <= 18000 else { throw fail(error) }
+            text = serialized
+            data = Data(serialized.utf8)
+        } else {
+            // Compatibility with requests from an older bundled WebView.
+            guard value is [String: Any], JSONSerialization.isValidJSONObject(value) else { throw fail(error) }
+            data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes])
+            guard let encoded = String(data: data, encoding: .utf8) else { throw fail(error) }
+            text = encoded
+        }
+        guard data.count <= 54000, text.utf16.count <= 18000,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw fail(error) }
+        return (object, text)
+    }
     static func base64(_ data: Data) -> String { data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
     static func decode(_ text: String) -> Data? {
         let value = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
