@@ -26,6 +26,7 @@ import { NUTRITION_FIELDS, normalizeMealNutrition, dailyMealNutrition } from "./
 import { analyzeMeal } from "./js/meal-nutrition-client.js";
 import { createMealEditorKeyboard } from "./js/meal-editor-keyboard.js";
 import { createWaterDialog } from "./js/water-dialog.js";
+import { createEdgeSwipeBack } from "./js/edge-swipe-back.js";
 import { chatGPTPlan } from "./js/chatgpt-plan-client.js";
 import { intakeSummary, intakeCard, intakeIcon } from "./js/intake-ui.js";
 import { enabledPlans, enabledSupplements, SCHEDULE_LABELS } from "./js/supplement-plan.js";
@@ -135,6 +136,24 @@ function $(sel) { return document.querySelector(sel); }
 
 const mealEditorKeyboard = createMealEditorKeyboard(E.mealDialog);
 const customWaterDialog = createWaterDialog(E.customDialog, E.customAmount);
+const edgeSwipeBack = createEdgeSwipeBack({
+  surface: E.appShell,
+  isEnabled: () => document.body.dataset.section === "detail" && !E.appShell.hidden,
+  createPreview: () => {
+    renderDashboard();
+    const preview = E.appShell.cloneNode(false);
+    const header = E.appShell.querySelector(".topbar").cloneNode(true);
+    header.querySelector("h1").textContent = "今日健康";
+    header.querySelector(".detail-back-bar").hidden = true;
+    header.querySelector(".account-avatar").hidden = true;
+    const dashboard = E.dashboardPanel.cloneNode(true);
+    dashboard.hidden = false;
+    preview.append(header, dashboard);
+    [preview, ...preview.querySelectorAll("[id]")].forEach(element => element.removeAttribute("id"));
+    return preview;
+  },
+  onBack: () => switchMain("overview"),
+});
 const historyPage = createHistoryPage(E.timelinePanel, {
   storage,
   openDay: day => { renderDayDetail(day); E.historyDialog.showModal(); },
@@ -550,6 +569,7 @@ function setPrimaryTab(activeId) {
 }
 
 function switchMain(section) {
+  edgeSwipeBack.cancel();
   navigationRevision++;
   hideAllContent();
   E.detailBackBar.hidden = true;
@@ -588,6 +608,7 @@ function openDetail(type) {
   const resolvedType = type;
   const panel = E[`${resolvedType}Panel`];
   if (!panel) return;
+  edgeSwipeBack.cancel();
   navigationRevision++;
   // Intake pages always show today, even after viewing a past meal date.
   if (["medicine", "supplement"].includes(resolvedType)) {
