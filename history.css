@@ -11,8 +11,11 @@ body[data-section="history"] .topbar h1 { font-size: 30px; letter-spacing: -.035
 #timelinePanel .history-month-title svg { width: 17px; height: 17px; color: #8c94a2; }
 .history-month-actions { display: flex; gap: 2px; }
 .history-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 14px; background: transparent; color: #657085; cursor: pointer; }
-.history-refresh-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 86px; height: 44px; padding: 0 6px; border: 0; border-radius: 14px; background: transparent; color: #657085; font-size: 12px; white-space: nowrap; cursor: pointer; }
-#timelinePanel .history-refresh-button:disabled { opacity: .7; }
+.history-refresh-button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 6px; width: 84px; height: 44px; margin-left: 8px; padding: 0 10px; border: 1px solid var(--theme-line); border-radius: 22px; background: var(--theme-surface); color: var(--theme-muted); font-family: inherit; font-size: 12px; font-weight: 550; line-height: 1; white-space: nowrap; box-shadow: 0 1px 3px rgba(29,46,79,.03); cursor: pointer; transition: background .18s ease, color .18s ease, border-color .18s ease; }
+#timelinePanel .history-refresh-button svg { width: 17px; height: 17px; stroke-width: 1.8; }
+.history-refresh-button:active, .history-refresh-button[aria-busy="true"] { background: var(--theme-soft); color: var(--theme-accent); border-color: var(--theme-soft); }
+#timelinePanel .history-refresh-button:disabled { opacity: 1; }
+@media (hover: hover) { .history-refresh-button:not(:disabled):hover { background: var(--theme-soft); color: var(--theme-accent); } }
 .history-refresh-button[aria-busy="true"] svg { animation: history-refresh-spin .9s linear infinite; }
 .history-load-notice[data-state="info"] { color: #657085; background: var(--theme-soft); }
 @keyframes history-refresh-spin { to { transform: rotate(360deg); } }
