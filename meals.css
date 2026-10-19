@@ -175,27 +175,39 @@ html.meal-editor-active { overflow: hidden; }
 #nutritionGoalForm header { flex-shrink: 0; padding: 20px; border-bottom: 1px solid var(--theme-line); }
 #nutritionGoalForm h2 { margin: 5px 0 0; font-size: 22px; }
 #nutritionGoalForm .nutrition-goal-eyebrow { margin: 0; font-size: 10px; }
-.nutrition-goal-body { min-height: 0; padding: 18px 20px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-#nutritionGoalForm label { display: block; margin: 0 0 9px; color: var(--theme-text); font-size: 12px; font-weight: 600; }
-#nutritionGoalForm label > span { color: var(--theme-muted); font-size: 11px; }
-#nutritionGoalWeight { width: 100%; min-height: 48px; margin: 0; padding: 11px 14px; border: 1px solid var(--theme-line); border-radius: 12px; background: var(--theme-subtle); color: var(--theme-text); font-size: 18px; }
-.nutrition-use-weight { min-height: 36px; margin: 7px 0 0; padding: 5px 0; border: 0; background: transparent; color: var(--theme-accent); font-size: 11px; }
-.nutrition-goal-help { margin: 13px 0; color: var(--theme-muted); font-size: 11px; line-height: 1.8; }
-.nutrition-ratio-inputs { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-top: 16px; }
-#nutritionGoalForm .nutrition-ratio-inputs label { margin: 0; padding: 10px; border-radius: 12px; background: var(--theme-subtle); font-size: 11px; }
-.nutrition-ratio-inputs label > span { display: flex; align-items: baseline; gap: 2px; margin-top: 8px; }
-.nutrition-ratio-inputs input { width: 100%; min-width: 0; min-height: 36px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--theme-text); font-size: 19px; font-weight: 650; }
+.nutrition-goal-body { display: flex; flex-direction: column; gap: 24px; min-height: 0; padding: 22px 20px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+#nutritionGoalForm label, .nutrition-ratio-section legend { display: block; margin: 0 0 10px; color: var(--theme-text); font-size: 12px; font-weight: 600; }
+.nutrition-weight-field { display: flex; align-items: center; gap: 12px; padding: 0 15px; border: 1px solid var(--theme-line); border-radius: 14px; background: var(--theme-subtle); }
+.nutrition-weight-field:focus-within { border-color: var(--theme-accent); }
+#nutritionGoalWeight { width: 100%; min-width: 0; min-height: 58px; margin: 0; padding: 12px 0; border: 0; outline: none; background: transparent; color: var(--theme-text); font-size: 25px; font-weight: 600; font-variant-numeric: tabular-nums; }
+#nutritionGoalWeight::placeholder { font-size: 16px; font-weight: 400; }
+.nutrition-weight-field > span { color: var(--theme-muted); font-size: 13px; }
+.nutrition-use-weight { min-height: 40px; margin: 6px 0 -8px; padding: 6px 0; border: 0; background: transparent; color: var(--theme-accent); font-size: 12px; text-align: left; }
+.nutrition-ratio-section { min-width: 0; margin: 0; padding: 0; border: 0; }
+.nutrition-ratio-section legend { padding: 0; }
+.nutrition-ratio-inputs { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; }
+#nutritionGoalForm .nutrition-ratio-inputs label { margin: 0; padding: 12px 10px; border: 1px solid var(--theme-line); border-radius: 14px; font-size: 11px; }
+.nutrition-ratio-inputs label:focus-within { border-color: var(--theme-accent); }
+.nutrition-ratio-inputs label > span { display: flex; align-items: baseline; gap: 3px; margin-top: 10px; }
+.nutrition-ratio-inputs input { width: 100%; min-width: 0; min-height: 36px; margin: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--theme-text); font-size: 21px; font-weight: 650; }
 .nutrition-ratio-inputs small { flex-shrink: 0; color: var(--theme-muted); font-size: 9px; font-weight: 400; }
-.nutrition-goal-preview { margin-top: 20px; }
+.nutrition-goal-preview { padding: 16px; border-radius: 16px; background: var(--theme-soft); }
 .nutrition-goal-preview h3 { margin: 0; color: var(--theme-text); font-size: 12px; font-weight: 600; }
-.nutrition-goal-preview .nutrition-goal-values { margin-top: 10px; }
-.nutrition-goal-message { margin: 0; color: var(--theme-accent); font-size: 11px; line-height: 1.7; }
-#nutritionGoalForm footer { flex-shrink: 0; padding: 12px 20px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--theme-line); }
+.nutrition-goal-preview .nutrition-goal-values { margin: 16px 0 0; padding: 0; gap: 12px; border-radius: 0; background: transparent; }
+.nutrition-goal-preview .nutrition-goal-values > div + div { padding-left: 12px; border-left: 1px solid var(--theme-line); }
+.nutrition-goal-preview dd { color: var(--theme-accent); font-size: 23px; }
+.nutrition-goal-message { margin: -10px 0 0; color: var(--theme-accent); font-size: 11px; line-height: 1.7; }
+.nutrition-goal-message:empty { display: none; }
+#nutritionGoalForm footer { flex-shrink: 0; padding: 12px 20px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--theme-line); }
 #nutritionGoalSave { width: 100%; min-height: 48px; margin: 0; border: 0; border-radius: 13px; background: var(--theme-accent); color: var(--theme-on-accent); font-size: 14px; }
 @media (max-width: 360px) {
-  .nutrition-goal-body { padding-inline: 16px; }
+  .nutrition-goal-body { padding-inline: 16px; gap: 20px; }
+  #nutritionGoalForm .nutrition-ratio-inputs label { padding-inline: 8px; }
   .nutrition-ratio-inputs label > span { flex-wrap: wrap; }
-  .nutrition-goal-values { gap: 6px; padding: 12px; }
+  .nutrition-goal-preview { padding: 14px 12px; }
+  .nutrition-goal-preview .nutrition-goal-values { gap: 8px; }
+  .nutrition-goal-preview .nutrition-goal-values > div + div { padding-left: 8px; }
+  .nutrition-goal-preview dd { font-size: 20px; }
 }
 
 .account-nutrition-targets { display: flex; flex-wrap: wrap; gap: 3px 10px; }
