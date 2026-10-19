@@ -452,6 +452,36 @@ html[data-focus-input="keyboard"] button.close-button:focus-visible { outline: 2
   .account-row { gap: 10px; padding-right: 13px; padding-left: 13px; }
 }
 
+/* The tab bar stays fixed while a detail page follows the edge-back gesture. */
+html.edge-back-active { overflow-x: clip; }
+.app-shell.edge-back-surface {
+  position: relative;
+  z-index: 21;
+  transform: translate3d(var(--edge-back-x, 0px), 0, 0);
+  box-shadow: -10px 0 30px rgb(0 0 0 / .12);
+  will-change: transform;
+}
+.native-ios .app-shell.edge-back-surface { position: fixed; }
+.app-shell.edge-back-preview,
+.native-ios .app-shell.edge-back-preview {
+  position: fixed;
+  inset: 0 auto 0 0;
+  height: 100dvh;
+  overflow: hidden;
+  z-index: 20;
+  pointer-events: none;
+  transform: translate3d(calc((1 - var(--edge-back-progress, 0)) * -36px), 0, 0);
+  filter: brightness(calc(.94 + var(--edge-back-progress, 0) * .06));
+}
+body[data-section="detail"] .edge-back-preview .topbar { justify-content: space-between; }
+.edge-back-preview .account-avatar { display: none; }
+.edge-back-preview .main-panel { animation: none; }
+.edge-back-settling,
+.edge-back-settling ~ .edge-back-preview { transition: transform .18s cubic-bezier(.2,.7,.2,1), filter .18s; }
+@media (prefers-reduced-motion: reduce) {
+  .edge-back-settling, .edge-back-preview { transition: none; }
+}
+
 .settings-help { margin: 0; color: var(--meta-muted); font-size: 12px; line-height: 1.7; }
 #profileDialog .settings-help { margin: 16px 0; }
 #profileDialog .profile-email { overflow-wrap: anywhere; }
