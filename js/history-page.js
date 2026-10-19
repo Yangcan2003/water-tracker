@@ -8,7 +8,7 @@ const paths = {
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   chevron: '<path d="m9 5 7 7-7 7"/>',
   down: '<path d="m7 10 5 5 5-5"/>',
-  refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.5-2L20 8M4 16l2.4 3A7 7 0 0 0 18 17"/>',
+  refresh: '<path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.34 5.66"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h2m4 0h2"/>',
   water: '<path d="M12 3C9 7 5.5 10.8 5.5 15a6.5 6.5 0 0 0 13 0C18.5 10.8 15 7 12 3Z"/><path d="M9 15a3 3 0 0 0 3 3"/>',
   meal: '<path d="M6 3v6m3-6v6M3 3v6a3 3 0 0 0 6 0m-3 3v9m12 0V3c-3 0-4 4-4 8h4"/>',
