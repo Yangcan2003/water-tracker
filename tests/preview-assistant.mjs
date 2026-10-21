@@ -7,7 +7,7 @@ const directory = await mkdtemp("/private/tmp/water-ai-qa-");
 await cp("www", directory, { recursive: true });
 for (const asset of ["index.html", "styles.css", "revamp.css", "meta.css", "history.css", "themes.css", "assistant.css", "icons"]) await cp(asset, `${directory}/${asset}`, { recursive: true });
 await build({
-  stdin: { contents: 'import { mock } from "./tests/firebase-mock.mjs"; mock.localMode = false; import { seedHistoryFixture } from "./tests/history-fixture.mjs"; seedHistoryFixture(); import "./app.js";', resolveDir: process.cwd() },
+  stdin: { contents: 'import { mock } from "./tests/firebase-mock.mjs"; mock.localMode = false; import { seedHistoryFixture } from "./tests/history-fixture.mjs"; seedHistoryFixture(); ' + (process.argv.includes("--legacy-proposal") ? 'import { seedLegacyProposalFixture } from "./tests/assistant-proposal-fixture.mjs"; seedLegacyProposalFixture(); ' : '') + 'import "./app.js";', resolveDir: process.cwd() },
   bundle: true, format: "esm", target: "safari15", outfile: `${directory}/app.js`, define: { __AI_BACKEND_URL__: '""' },
   plugins: [{ name: "test-firebase", setup(build) {
     build.onResolve({ filter: /^firebase\/(app|auth|firestore)$/ }, () => ({ path: new URL("./firebase-mock.mjs", import.meta.url).pathname }));

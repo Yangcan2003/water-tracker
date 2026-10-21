@@ -10,6 +10,7 @@ import { FOOD_NUTRIENTS, foodServingLabel } from "./food-catalog.js";
 import { prepareMealPhoto, isMealPhoto } from "./meals.js";
 import { parseAssistantResponse } from "./assistant-protocol.js";
 import { ACTION_LABELS, buildActionCatalog, prepareAssistantAction, describeAssistantRecord, executeAssistantAction } from "./assistant-actions.js";
+import { serializeAssistantProposal, restoreAssistantProposal, needsProposalRecovery, proposalRecoveryQuestion } from "./assistant-proposals.js";
 
 const icons = {
   chat: '<path d="M20 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 18 0Z"/><path d="M7 11h.01M11 11h.01M15 11h.01"/>',
@@ -78,6 +79,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     panel.innerHTML = attachments.map((photo, index) => `<div><img src="${photo}" alt="待发送图片 ${index + 1}"><button type="button" data-remove-photo="${index}" aria-label="移除第 ${index + 1} 张图片">${svg("close")}</button></div>`).join("");
   }
   function actionMarkup(message, index) {
+    if (needsProposalRecovery(message)) return `<section class="assistant-proposal"><p class="assistant-action-notice">${esc(message.proposals?.find(change => change.error)?.error || "保存卡片暂不可用，请恢复后核对并确认。")}</p><div class="assistant-proposal-buttons"><button type="button" data-recover-actions="${index}" ${busy || actionBusy ? "disabled" : ""}>恢复保存卡片</button></div></section>`;
     if (!message.proposals?.length) return message.actionNotice ? `<p class="assistant-action-notice">${esc(message.actionNotice)}</p>` : "";
     return `<div class="assistant-proposals">${message.proposals.map((change, actionIndex) => {
       if (change.state === "invalid") return `<p class="assistant-action-notice">${esc(change.error)}</p>`;
@@ -159,7 +161,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   }
   function restoreConversation(item) {
     clearConversation(); activeId = item.id; share.checked = item.shareRecords; range.value = item.range;
-    messages = item.messages.map(message => ({ ...message }));
+    messages = item.messages.map(message => ({ ...message, ...(message.proposals?.length ? { proposals: message.proposals.map(value => restoreAssistantProposal(value.version === 1 ? value : serializeAssistantProposal(value))) } : {}) }));
     if (messages.at(-1)?.role === "user") { const last = messages.pop(); pending = { question: last.content, photoIds: last.photoIds, state: "failed" }; showError("上次回答未完成，可以重试。", true); }
     input.value = ""; resizeInput(); updatePrivacy(); renderMessages(); closePanels(); scrollToEnd();
     const version = generation;
@@ -197,7 +199,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     })();
     return check.promise;
   }
-  async function send(retryQuestion) {
+  async function send(retryQuestion, recoveryOf = null) {
     if (busy) { controller?.abort("user"); return; }
     closePanels();
     if (planBusy || verificationBusy || photoBusy || actionBusy) { showError("请先完成当前连接操作，再发送问题。"); return; }
@@ -247,11 +249,13 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
       if (version !== generation || getUser()?.uid !== user.uid) return;
       const parsed = parseAssistantResponse({ reply: result.reply, actions: result.actions || [] });
       const proposals = parsed.actions.map(action => {
-        try { const change = prepareAssistantAction(action, catalog); if (change.category === "meal" && change.operation === "create" && selectedPhotos.length) change.after.photos = selectedPhotos; return change; }
+        try { const change = prepareAssistantAction(action, catalog); if (change.category === "meal" && change.operation === "create" && selectedPhotos.length) { change.after.photos = selectedPhotos; change.photoIds = pending.photoIds; } return change; }
         catch (error) { return { state: "invalid", error: error.message }; }
       });
       const source = context ? `${new Date(context.snapshot.generatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 读取 · ${context.range.startDate} — ${context.range.endDate} · ${context.summarized ? "健康记录摘要" : "健康记录"}${context.foodCatalog?.count ? ` · 常吃食物 ${context.foodCatalog.count} 种` : ""}` : "";
-      messages.push({ role: "user", content: question, photos: selectedPhotos, photoIds: pending.photoIds }, { role: "assistant", content: parsed.reply.slice(0, 6000), reasoningSummary: String(result.reasoningSummary || live.reasoningSummary || "").slice(0, 4000), proposals, actionNotice: proposals.length ? "包含待确认的记录变更；重新打开后请重新提问以核对最新记录。" : "", source: [source, result.incomplete || parsed.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
+      const actionNotice = proposals.some(change => change.state === "pending") ? "包含待确认的记录变更" : !parsed.actions.length && /保存|添加|记录|新增|修改|删除/.test(question) && /确认.*保存|保存.*确认|按钮|添加建议/.test(parsed.reply) ? "助手未返回保存卡片" : "";
+      if (recoveryOf && proposals.some(change => change.state === "pending")) recoveryOf.actionNotice = "已重新生成保存卡片，请在最新回复中确认。";
+      messages.push({ role: "user", content: question, photos: selectedPhotos, photoIds: pending.photoIds }, { role: "assistant", content: parsed.reply.slice(0, 6000), reasoningSummary: String(result.reasoningSummary || live.reasoningSummary || "").slice(0, 4000), proposals, actionNotice, source: [source, result.incomplete || parsed.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
     } catch (error) {
       if (version !== generation) return;
       if (pending) pending.state = "failed";
@@ -334,21 +338,35 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   });
   find("#assistantAttachments").addEventListener("click", event => { const button = event.target.closest("[data-remove-photo]"); if (button && !busy && !photoBusy) { attachments.splice(Number(button.dataset.removePhoto), 1); renderAttachments(); } });
   conversation.addEventListener("click", async event => {
+    const recovery = event.target.closest("[data-recover-actions]");
+    if (recovery && !busy && !actionBusy) {
+      const index = Number(recovery.dataset.recoverActions), message = messages[index];
+      if (needsProposalRecovery(message)) void send(proposalRecoveryQuestion(message, messages.slice(0, index).filter(item => item.role === "user").at(-1)?.content), message);
+      return;
+    }
     const button = event.target.closest("[data-confirm-action], [data-cancel-action]"); if (!button || busy || actionBusy) return;
     const [index, actionIndex] = (button.dataset.confirmAction || button.dataset.cancelAction).split(":").map(Number);
     const message = messages[index], change = message?.proposals?.[actionIndex]; if (!change || change.state !== "pending") return;
-    if (button.dataset.cancelAction) { change.state = "cancelled"; message.actionNotice = "有变更已取消；未执行的变更重新打开后需重新提问。"; saveConversation(); renderMessages(); return; }
+    if (button.dataset.cancelAction) { change.state = "cancelled"; message.actionNotice = "有变更已取消"; saveConversation(); renderMessages(); return; }
     const user = getUser(), version = generation; if (!user) { showError("请先登录 App"); return; }
     actionBusy = true; showError(); updateControls(); renderMessages();
     try {
-      await executeAssistantAction(storage, change, { uid: user.uid, getUser });
+      if (change.category === "meal" && change.operation === "create" && change.photoIds?.length && !change.after.photos?.length) {
+        const photos = await storage.mealPhotos.get(change.photoIds);
+        if (version !== generation || getUser()?.uid !== user.uid) return;
+        if (photos.length !== change.photoIds.length) throw new Error("原图片未恢复，请重新添加图片后生成保存卡片");
+        change.after.photos = photos;
+      }
+      const saving = executeAssistantAction(storage, change, { uid: user.uid, getUser });
+      saveConversation();
+      await saving;
       if (version !== generation || getUser()?.uid !== user.uid) return;
       const label = { create: "新增", update: "修改", delete: "删除" }[change.operation];
       message.actionNotice = (message.actionNotice?.startsWith("已确认") ? message.actionNotice + "；" : "已确认：") + label + ACTION_LABELS[change.category] + " " + describeAssistantRecord(change.category, change.after || change.before, change.date);
       message.content += `\n\n> 已确认${label}${ACTION_LABELS[change.category]}。`;
       saveConversation(); onRecordsChanged();
     } catch (error) { if (version === generation) change.error = error.message; }
-    finally { actionBusy = false; updateControls(); renderMessages(); }
+    finally { actionBusy = false; if (version === generation && getUser()?.uid === user.uid) saveConversation(); updateControls(); renderMessages(); }
   });
   conversation.addEventListener("click", async event => {
     const button = event.target.closest("[data-copy-answer]"); if (!button) return;

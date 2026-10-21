@@ -4,14 +4,14 @@ import { build } from "esbuild";
 import { toDateKey } from "../js/utils.js";
 
 const result = await build({
-  stdin: { contents: 'export { storage } from "./js/storage.js"; export { mock } from "./tests/firebase-mock.mjs"; export * from "./js/assistant-actions.js";', resolveDir: process.cwd() },
+  stdin: { contents: 'export { storage } from "./js/storage.js"; export { mock } from "./tests/firebase-mock.mjs"; export * from "./js/assistant-actions.js"; export * from "./js/assistant-proposals.js"; export { createAssistantHistory } from "./js/assistant-history.js";', resolveDir: process.cwd() },
   bundle: true, write: false, platform: "node", format: "esm",
   plugins: [{ name: "fake-firebase", setup(build) { build.onResolve({ filter: /^firebase\/firestore$/ }, () => ({ path: new URL("./firebase-mock.mjs", import.meta.url).pathname })); } }],
 });
 globalThis.window = new EventTarget();
 Object.defineProperty(globalThis, "navigator", { value: { onLine: true }, configurable: true });
 const local = new Map(); globalThis.localStorage = { getItem: key => local.get(key) || null, setItem: (key, value) => local.set(key, value) };
-const { storage, mock, buildActionCatalog, prepareAssistantAction, executeAssistantAction } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+const { storage, mock, buildActionCatalog, prepareAssistantAction, executeAssistantAction, serializeAssistantProposal, restoreAssistantProposal, createAssistantHistory } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 const today = toDateKey(new Date()), range = { startDate: "0001-01-01", endDate: today }, user = { uid: "test" };
 const identity = { uid: "test", getUser: () => user };
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -145,4 +145,62 @@ test("offline upload failure retains a local write intent instead of losing or d
   mock.denied.clear(); await storage.retryFailedRequests();
   assert.equal(mock.documents.get(`users/test/waterLogs/${result.id}`).amount, 300);
   assert.equal(storage.getCachedDay(today).water.length, 1);
+});
+
+function reopen(change) {
+  const history = createAssistantHistory(localStorage);
+  history.save("test", { activeId: "test-chat", conversations: [{ id: "test-chat", updatedAt: Date.now(), messages: [{ role: "assistant", content: "请核对保存卡片", proposals: [change] }] }] });
+  return restoreAssistantProposal(history.load("test").conversations[0].messages[0].proposals[0]);
+}
+test("pending meal cards survive a full history round trip with date, nutrients and photo references", async () => {
+  const meal = await propose("create", "meal", { name: "测试晚餐", mealType: "dinner", kcal: 881, carbsG: 91.3, proteinG: 58.4, fatG: 29.3, fiberG: 7, sodiumMg: 800, portion: "一份" });
+  meal.after.photos = ["data:image/jpeg;base64,YWJj"]; meal.photoIds = ["a".repeat(64)];
+  const restored = reopen(meal);
+  assert.equal(restored.state, "pending"); assert.equal(restored.date, today);
+  assert.equal(restored.after.nutrition.kcal, 881); assert.equal(restored.after.nutrition.fatG, 29.3);
+  assert.equal(restored.after.nutrition.fiberG, 7); assert.deepEqual(restored.photoIds, meal.photoIds);
+  assert.equal(restored.after.photos, undefined);
+  assert.equal(storage.getCachedDay(today).meal.length, 0);
+  await executeAssistantAction(storage, restored, identity);
+  assert.equal(storage.getCachedDay(today).meal.length, 1);
+  assert.equal(storage.getCachedDay(today).meal[0].nutrition.kcal, 881);
+});
+test("a restored applying create uses its stable ID after a crash instead of adding the same record again", async () => {
+  for (const [category, values] of [["water", { amount: 250 }], ["meal", { name: "测试晚餐", mealType: "dinner", kcal: 881, carbsG: 91.3, proteinG: 58.4, fatG: 29.3 }], ["food", favorite]]) {
+    const original = await propose("create", category, values);
+    const interrupted = { ...serializeAssistantProposal(original), state: "applying" };
+    const first = await executeAssistantAction(storage, original, identity); await settle();
+    const count = mock.writes.length;
+    const recovered = restoreAssistantProposal(interrupted);
+    assert.equal(recovered.state, "pending");
+    const saved = await executeAssistantAction(storage, recovered, identity); await settle();
+    assert.equal(saved.id, first.id); assert.equal(recovered.state, "applied");
+    assert.equal(mock.writes.length, count);
+  }
+});
+test("restored update/delete cards still check stale records and preserve applied or cancelled states", async () => {
+  const saved = await executeAssistantAction(storage, await propose("create", "water", { amount: 250 }), identity); await settle();
+  const data = await catalog(), ref = data.data.records.find(item => item.category === "water").ref;
+  const update = prepareAssistantAction({ operation: "update", category: "water", ref, values: { amount: 350 } }, data);
+  const restored = reopen(update); assert.equal(restored.state, "pending");
+  mock.documents.set(`users/test/waterLogs/${saved.id}`, { ...mock.documents.get(`users/test/waterLogs/${saved.id}`), amount: 400 });
+  await assert.rejects(executeAssistantAction(storage, restored, identity), /发生变化/);
+  const fresh = await catalog();
+  const remove = prepareAssistantAction({ operation: "delete", category: "water", ref: fresh.data.records.find(item => item.category === "water").ref, values: {} }, fresh);
+  const removed = reopen(remove); await executeAssistantAction(storage, removed, identity);
+  assert.equal(reopen(removed).state, "applied");
+  update.state = "cancelled"; assert.equal(reopen(update).state, "cancelled");
+});
+test("restoring a goal or food card preserves saved units and daily fiber/sodium goals", async () => {
+  await storage.updateProfile({ dailyGoal: 2400, nutritionGoal: { weightKg: 70, ratios: { carbsG: 3, proteinG: 1.6, fatG: 0.8 }, daily: { fiberG: 30, sodiumMg: 1800 } } });
+  const data = await catalog();
+  const goal = prepareAssistantAction({ operation: "update", category: "goals", ref: "goals", values: { waterGoalMl: 2500 } }, data);
+  const restored = reopen(goal); assert.equal(restored.state, "pending");
+  await storage.updateProfile({ nutritionGoal: { ...storage.getCachedProfile().nutritionGoal, daily: { fiberG: 35, sodiumMg: 1500 } } });
+  await executeAssistantAction(storage, restored, identity);
+  assert.deepEqual(storage.getCachedProfile().nutritionGoal.daily, { fiberG: 35, sodiumMg: 1500 });
+  assert.equal(storage.getCachedProfile().dailyGoal, 2500);
+  const food = reopen(await propose("create", "food", favorite));
+  assert.equal(food.after.servingAmount, 100); assert.equal(food.after.servingUnit, "g"); assert.equal(food.after.addedSugarsG, 0);
+  await executeAssistantAction(storage, food, identity);
 });

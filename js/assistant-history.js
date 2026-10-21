@@ -1,4 +1,5 @@
-// Store only the visible conversation, never provider credentials or the health
+import { serializeAssistantProposal } from "./assistant-proposals.js";
+// Store only the visible conversation and review cards, never provider credentials or the health
 // context payload. Accounts have separate histories on this device.
 const prefix = "health_tracker_assistant_history:";
 export function normalizeAssistantHistory(value) {
@@ -15,6 +16,7 @@ export function normalizeAssistantHistory(value) {
       ...(message.role === "user" && message.state === "failed" ? { state: "failed" } : {}),
       ...(message.role === "user" && Array.isArray(message.photoIds) ? { photoIds: message.photoIds.filter(id => typeof id === "string" && /^[a-f0-9]{64}$/.test(id)).slice(0, 3) } : {}),
       ...(message.role === "assistant" && typeof message.actionNotice === "string" ? { actionNotice: message.actionNotice.slice(0, 1200) } : {}),
+      ...(message.role === "assistant" && Array.isArray(message.proposals) && message.proposals.length ? { proposals: message.proposals.slice(0, 8).map(serializeAssistantProposal) } : {}),
     })),
   })).filter(item => item.messages.length).sort((a, b) => b.updatedAt - a.updatedAt);
   return { conversations, activeId: conversations.some(item => item.id === value?.activeId) ? value.activeId : null };

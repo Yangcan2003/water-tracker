@@ -14,14 +14,16 @@ test("images accept only bounded compressed uploads, never remote URLs or active
   assert.throws(() => parseAssistantResponse('{"reply":"not finished"'));
   assert.throws(() => parseAssistantResponse({ reply: "ok", actions: Array(9).fill({}) }));
 });
-test("history stores attachment references and results without persisting image bytes or replayable operations", () => {
+test("history stores attachment references without image bytes and rejects malformed executable cards", () => {
   const id = "a".repeat(64);
   const history = normalizeAssistantHistory({ activeId: "one", conversations: [{ id: "one", updatedAt: 1, messages: [
     { role: "user", content: "看图", photos: [photo], photoIds: [id, "invalid"] },
     { role: "assistant", content: "待确认", proposals: [{ category: "water" }], actionNotice: "需要重新核对" },
   ] }] });
   assert.deepEqual(history.conversations[0].messages[0].photoIds, [id]);
-  assert.ok(!JSON.stringify(history).includes(photo)); assert.ok(!JSON.stringify(history).includes("proposals"));
+  assert.ok(!JSON.stringify(history).includes(photo));
+  assert.equal(history.conversations[0].messages[1].proposals[0].state, "invalid");
+  assert.equal(history.conversations[0].messages[1].proposals[0].action, undefined);
   assert.equal(history.conversations[0].messages[1].actionNotice, "需要重新核对");
 });
 test("native and web structured proposal schemas cannot drift", async () => {

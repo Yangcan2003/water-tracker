@@ -11,6 +11,7 @@ export const chatGPTPlan = {
     if (body.messages.at(-1).content.includes("额度测试")) throw Object.assign(new Error("ChatGPT 会员用量已达当前限制，请稍后重试或在 ChatGPT 中查看用量"), { code: "PLAN_LIMIT" });
     await new Promise(resolve => setTimeout(resolve, 400));
     const question = body.messages.at(-1).content;
+    if (question.includes("保存卡片测试")) return { reply: "已整理为保存卡片（模拟数据）。请核对日期、晚餐类型和营养后，点击确认新增。", actions: [{ operation: "create", category: "meal", date: body.actionCatalog.localDate, time: "12:30", values: { name: "测试晚餐", mealType: "dinner", kcal: 881, carbsG: 91.3, proteinG: 58.4, fatG: 29.3, fiberG: 7, sodiumMg: 800, note: "模拟数据，用于验证重启后确认保存" } }] };
     if (question.includes("流式测试")) {
       const reasoningSummary = "正在核对本轮记录的日期、营养单位和缺失项。这里是模拟的公开思考摘要，用于验证实时显示。";
       const reply = "根据这份**模拟记录**，先看今天的营养合计：\n\n| 指标 | 已记录 |\n|---|---:|\n| 膳食纤维 | 18 g |\n| 钠 | 1200 mg |\n\n这些数值只用于界面测试，缺失记录不能视为零摄入。";

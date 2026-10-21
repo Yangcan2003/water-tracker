@@ -90,7 +90,7 @@ export function prepareAssistantAction(action, catalog, now = new Date()) {
       next = normalizeFavoriteFood({ ...values, id: previous?.id || generateLocalId() });
       if (!next) throw new Error("常吃食物需要有效的名称、计量份量及四项基础营养；补充营养未知可留空");
     }
-    return { operation, category, date: null, before: previous, after: next, target, state: "pending" };
+    return { operation, category, date: null, before: previous, after: next, target, writeID: next?.id || generateLocalId(), state: "pending" };
   }
   let next = null;
   if (operation !== "delete") {
@@ -118,12 +118,12 @@ export function prepareAssistantAction(action, catalog, now = new Date()) {
     if (category === "goals") {
       next = { ...previous, dailyGoal: finite(values.waterGoalMl, 100, 10000, "饮水目标") };
       if (["goalWeightKg", "carbsRatio", "proteinRatio", "fatRatio"].some(key => patch[key] != null)) {
-        const goal = normalizeNutritionGoal({ weightKg: values.goalWeightKg, ratios: { carbsG: values.carbsRatio, proteinG: values.proteinRatio, fatG: values.fatRatio } });
+        const goal = normalizeNutritionGoal({ weightKg: values.goalWeightKg, ratios: { carbsG: values.carbsRatio, proteinG: values.proteinRatio, fatG: values.fatRatio }, daily: previous?.nutritionGoal?.daily });
         if (!goal) throw new Error("营养目标不完整，请明确体重及三个营养系数"); next.nutritionGoal = goal;
       }
     }
   }
-  return { operation, category, date, before: previous, after: next, target, state: "pending" };
+  return { operation, category, date, before: previous, after: next, target, writeID: generateLocalId(), state: "pending" };
 }
 
 export function describeAssistantRecord(category, record, date) {
@@ -162,6 +162,15 @@ export async function executeAssistantAction(storage, change, { uid, getUser }) 
     const profile = await storage.getProfile({ force: true }); guard();
     if (storage.syncStatus.failures.some(item => item.kind === "read")) throw new Error("无法核对最新食物库，请联网后重试");
     const foods = normalizeFoodCatalog(profile.foodCatalog), index = foods.findIndex(food => food.id === change.target?.record.id);
+    if (change.operation === "create") {
+      const existing = foods.find(food => food.id === change.after.id);
+      if (existing) {
+        if (actionFingerprint("food", existing) !== actionFingerprint("food", change.after)) throw new Error("这项食物已保存后发生变化，请重新提问");
+        change.state = "applied"; return existing;
+      }
+    }
+    if (change.operation === "delete" && index < 0) { change.state = "applied"; return change.before; }
+    if (change.operation === "update" && index >= 0 && actionFingerprint("food", foods[index]) === actionFingerprint("food", change.after)) { change.state = "applied"; return foods[index]; }
     if (change.target && (index < 0 || actionFingerprint("food", foods[index]) !== change.target.fingerprint)) throw new Error("这项常吃食物已经发生变化，请重新提问后再确认");
     if (change.operation === "create" && foods.length >= MAX_FAVORITE_FOODS) throw new Error("最多保存 50 种常吃食物，请先整理食物库");
     const duplicate = food => food.name.replace(/\s/g, "").toLocaleLowerCase();
@@ -173,19 +182,31 @@ export async function executeAssistantAction(storage, change, { uid, getUser }) 
     return change.after || change.before;
   }
   let current = null;
-  if (change.target) {
-    current = await readCurrent(storage, change); guard();
+  if (change.target || (change.operation === "create" && change.restored)) {
+    current = await readCurrent(storage, change.target ? change : { ...change, target: { record: { id: change.writeID } } }); guard();
     if (storage.syncStatus.failures.some(item => item.kind === "read")) throw new Error("无法核对最新记录，请联网后重试");
-    if (!current || actionFingerprint(change.category, current) !== change.target.fingerprint) throw new Error("这条记录已经发生变化，请重新提问后再确认");
+    if (change.operation === "delete" && !current) { change.state = "applied"; return change.before; }
+    if (current && change.after && actionFingerprint(change.category, current) === actionFingerprint(change.category, change.after)) { change.state = "applied"; return current; }
+    if (change.operation === "create") {
+      if (current) throw new Error("这项记录已保存后发生变化，请重新提问");
+    } else {
+      if (!current || actionFingerprint(change.category, current) !== change.target.fingerprint) throw new Error("这条记录已经发生变化，请重新提问后再确认");
+    }
   } else if (change.category === "workout") {
     const detail = await storage.getWorkoutDetail(change.date); guard();
     if (detail?.activity) throw new Error("这天已有训练记录，请明确修改而不是新增");
   }
   guard();
   const record = change.operation === "delete" ? current : { ...(current || {}), ...change.after };
+  // These proposals can change water/macros, but do not edit daily fiber or
+  // sodium goals. Keep their latest values if another page changed them.
+  if (change.category === "goals" && record.nutritionGoal) {
+    const { daily, ...macros } = record.nutritionGoal;
+    record.nutritionGoal = { ...macros, ...(current?.nutritionGoal?.daily ? { daily: current.nutritionGoal.daily } : {}) };
+  }
   // Restore photos from the fresh record; catalog/history never sends them.
   if (change.category === "meal" && current) record.photos = current.photos;
-  const saved = await storage.writeAssistantRecord(change.category, change.date, record, change.operation === "delete", current?.id);
+  const saved = await storage.writeAssistantRecord(change.category, change.date, record, change.operation === "delete", current?.id || (change.operation === "create" ? change.writeID : undefined));
   change.state = "applied"; guard();
   return saved;
   } catch (error) { if (change.state !== "applied") change.state = "pending"; throw error; }
