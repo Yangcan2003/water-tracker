@@ -30,7 +30,7 @@ const PROMPTS = [
   ["food", "今天怎么吃", "请结合饮食和身体记录，帮我安排今天的饮食思路。不要臆测热量，信息不足时先问我必要的问题。"],
 ];
 
-export function createAssistantPage(root, { storage, getUser, login, verifyEmail, plan = chatGPTPlan, request = plan?.request ?? assistantRequest, historyStore = createAssistantHistory(), onRecordsChanged = () => {} }) {
+export function createAssistantPage(root, { storage, getUser, login, verifyEmail, plan = chatGPTPlan, request = plan?.request ?? assistantRequest, historyStore = createAssistantHistory(), onRecordsChanged = () => {}, onPreviewPhoto = () => {} }) {
   const backend = DEFAULT_AI_BACKEND;
   let messages = [], pending = null, busy = false, generation = 0, controller = null;
   let connection = "checking", statusCheck = null, identityGeneration = 0, checkedAt = 0, lastConnectionError = "";
@@ -38,6 +38,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   let conversations = [], activeId = null, historyOwner = null, historyReadable = true;
   let attachments = [], photoBusy = false, actionBusy = false;
   let live = { reply: "", reasoningSummary: "" }, streamFrame = null;
+  let closePhotoPreview;
   root.innerHTML = `
     <header class="assistant-toolbar"><button class="assistant-title" id="assistantAccountToggle" type="button" aria-expanded="false" aria-controls="assistantAccountMenu"><strong>健康助手</strong>${svg("down")}</button><div class="assistant-toolbar-actions"><button class="assistant-icon-button" id="assistantHistoryToggle" type="button" aria-label="历史对话" aria-expanded="false" aria-controls="assistantHistoryPanel">${svg("history")}</button><button class="assistant-icon-button" id="assistantNewChat" type="button" aria-label="开始新对话" title="新对话">${svg("edit")}</button></div>
       <section class="assistant-account-menu" id="assistantAccountMenu" aria-label="助手账号" hidden><div class="assistant-menu-heading"><strong>ChatGPT</strong><button class="assistant-icon-button" id="assistantCloseAccount" type="button" aria-label="关闭账号菜单">${svg("close")}</button></div><p id="assistantConnection" role="status">正在检查连接</p><p id="assistantPlanLabel">由 OpenAI 提供</p><button id="assistantConnectPlan" type="button">连接 ChatGPT</button><div id="assistantPlanAccount" hidden><a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">在 ChatGPT 中管理会员</a><button id="assistantDisconnectPlan" type="button">断开连接</button></div><button id="assistantLogin" type="button" hidden>登录 App</button></section>
@@ -71,12 +72,30 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     find("#assistantHistoryToggle").disabled = busy || planBusy || actionBusy || photoBusy;
     root.querySelectorAll("[data-ai-prompt]").forEach(button => { button.disabled = busy || planBusy; });
   }
-  function photoMarkup(photos = []) {
-    return photos.filter(isMealPhoto).length ? `<div class="assistant-message-photos">${photos.filter(isMealPhoto).map((photo, index) => `<img src="${photo}" alt="对话附件 ${index + 1}" loading="lazy">`).join("")}</div>` : "";
+  function photoMarkup(message, messageIndex) {
+    const photos = message.photos || [];
+    if (photos.some(isMealPhoto)) return `<div class="assistant-message-photos">${photos.map((photo, index) => isMealPhoto(photo) ? `<button type="button" data-preview-photo="${messageIndex}:${index}" aria-label="查看对话图片 ${index + 1}"><img src="${photo}" alt="对话附件 ${index + 1}" loading="lazy"></button>` : "").join("")}</div>`;
+    if (message.photoIds?.length) return `<div class="assistant-photo-status" role="status">${message.photoError ? '图片暂时无法读取。<button type="button" data-reload-photos="' + messageIndex + '">重新加载图片</button>' : "正在读取图片…"}</div>`;
+    return "";
+  }
+  function previewPhoto(photo) {
+    if (!isMealPhoto(photo)) return;
+    input.blur(); closePanels(); closePhotoPreview?.();
+    closePhotoPreview = onPreviewPhoto(photo);
+  }
+  async function loadMessagePhotos(message, version = generation) {
+    if (message.photoLoading) return;
+    message.photoLoading = true; message.photoError = false; renderMessages();
+    try {
+      const photos = await storage.mealPhotos.get(message.photoIds);
+      if (photos.length !== message.photoIds.length || !photos.every(isMealPhoto)) throw new Error("图片未完整读取");
+      if (version === generation) message.photos = photos;
+    } catch { if (version === generation) message.photoError = true; }
+    finally { if (version === generation) { message.photoLoading = false; renderMessages(); } }
   }
   function renderAttachments() {
     const panel = find("#assistantAttachments"); panel.hidden = !attachments.length;
-    panel.innerHTML = attachments.map((photo, index) => `<div><img src="${photo}" alt="待发送图片 ${index + 1}"><button type="button" data-remove-photo="${index}" aria-label="移除第 ${index + 1} 张图片">${svg("close")}</button></div>`).join("");
+    panel.innerHTML = attachments.map((photo, index) => `<div><button class="assistant-attachment-preview" type="button" data-preview-attachment="${index}" aria-label="查看待发送图片 ${index + 1}"><img src="${photo}" alt="待发送图片 ${index + 1}"></button><button class="assistant-attachment-remove" type="button" data-remove-photo="${index}" aria-label="移除第 ${index + 1} 张图片">${svg("close")}</button></div>`).join("");
   }
   function actionMarkup(message, index) {
     if (needsProposalRecovery(message)) return `<section class="assistant-proposal"><p class="assistant-action-notice">${esc(message.proposals?.find(change => change.error)?.error || "保存卡片暂不可用，请恢复后核对并确认。")}</p><div class="assistant-proposal-buttons"><button type="button" data-recover-actions="${index}" ${busy || actionBusy ? "disabled" : ""}>恢复保存卡片</button></div></section>`;
@@ -102,8 +121,8 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     return heading + `<dl class="assistant-food-nutrients">${FOOD_NUTRIENTS.map(field => `<div><dt>${field.label}</dt><dd>${esc(amount(food[field.key], field.unit))}</dd></div>`).join("")}</dl>${food.aliases || food.note ? `<p>${esc([food.aliases, food.note].filter(Boolean).join(" · "))}</p>` : ""}`;
   }
   function renderMessages() {
-    const content = [...messages, ...(pending ? [{ role: "user", content: pending.question, photos: pending.photos, state: pending.state }] : [])];
-    conversation.innerHTML = content.map((message, index) => `<article class="assistant-message" data-role="${message.role}"><span class="assistant-message-author">${message.role === "user" ? "你" : "健康助手"}</span>${photoMarkup(message.photos)}${message.role === "assistant" ? reasoningMarkup(message.reasoningSummary) : ""}<div class="assistant-message-content">${message.role === "user" ? esc(message.content) : formatAssistantText(message.content)}</div>${message.state === "failed" ? '<small class="assistant-message-status">未发送完成 · 问题已保留</small>' : ""}${message.source ? `<small class="assistant-message-source">${esc(message.source)}</small>` : ""}${message.role === "assistant" ? actionMarkup(message, index) + `<button class="assistant-copy" type="button" data-copy-answer="${index}" aria-label="复制这条回答">${svg("copy")}<span>复制</span></button>` : ""}</article>`).join("") + (pending && (busy || live.reply || live.reasoningSummary) ? liveMarkup() : "");
+    const content = [...messages, ...(pending ? [{ ...pending, role: "user", content: pending.question }] : [])];
+    conversation.innerHTML = content.map((message, index) => `<article class="assistant-message" data-role="${message.role}"><span class="assistant-message-author">${message.role === "user" ? "你" : "健康助手"}</span>${photoMarkup(message, index)}${message.role === "assistant" ? reasoningMarkup(message.reasoningSummary) : ""}<div class="assistant-message-content">${message.role === "user" ? esc(message.content) : formatAssistantText(message.content)}</div>${message.state === "failed" ? '<small class="assistant-message-status">未发送完成 · 问题已保留</small>' : ""}${message.source ? `<small class="assistant-message-source">${esc(message.source)}</small>` : ""}${message.role === "assistant" ? actionMarkup(message, index) + `<button class="assistant-copy" type="button" data-copy-answer="${index}" aria-label="复制这条回答">${svg("copy")}<span>复制</span></button>` : ""}</article>`).join("") + (pending && (busy || live.reply || live.reasoningSummary) ? liveMarkup() : "");
     find("#assistantIntro").hidden = content.length > 0;
     keyboard.contentChanged();
   }
@@ -161,13 +180,14 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   }
   function restoreConversation(item) {
     clearConversation(); activeId = item.id; share.checked = item.shareRecords; range.value = item.range;
-    messages = item.messages.map(message => ({ ...message, ...(message.proposals?.length ? { proposals: message.proposals.map(value => restoreAssistantProposal(value.version === 1 ? value : serializeAssistantProposal(value))) } : {}) }));
+    messages = item.messages.map(message => ({ ...message, photoLoading: false, photoError: false, ...(message.proposals?.length ? { proposals: message.proposals.map(value => restoreAssistantProposal(value.version === 1 ? value : serializeAssistantProposal(value))) } : {}) }));
     if (messages.at(-1)?.role === "user") { const last = messages.pop(); pending = { question: last.content, photoIds: last.photoIds, state: "failed" }; showError("上次回答未完成，可以重试。", true); }
     input.value = ""; resizeInput(); updatePrivacy(); renderMessages(); closePanels(); scrollToEnd();
     const version = generation;
-    for (const message of [...messages, ...(pending ? [pending] : [])]) if (message.photoIds?.length) void storage.mealPhotos.get(message.photoIds).then(photos => { if (version === generation) { message.photos = photos; renderMessages(); } }).catch(() => {});
+    for (const message of [...messages, ...(pending ? [pending] : [])]) if (message.photoIds?.length) void loadMessagePhotos(message, version);
   }
   function clearConversation() {
+    closePhotoPreview?.(); closePhotoPreview = null;
     if (streamFrame != null) cancelAnimationFrame(streamFrame); streamFrame = null;
     live = { reply: "", reasoningSummary: "" };
     generation++; controller?.abort("reset"); controller = null; busy = false; messages = []; pending = null; attachments = []; renderAttachments(); verificationVisible = false; verificationBusy = false;
@@ -336,7 +356,19 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     catch (error) { if (version === generation) showError(error.message.replace("食物图片", "图片")); }
     finally { photoBusy = false; setProgress(""); updateControls(); }
   });
-  find("#assistantAttachments").addEventListener("click", event => { const button = event.target.closest("[data-remove-photo]"); if (button && !busy && !photoBusy) { attachments.splice(Number(button.dataset.removePhoto), 1); renderAttachments(); } });
+  find("#assistantAttachments").addEventListener("click", event => {
+    const preview = event.target.closest("[data-preview-attachment]");
+    if (preview) { previewPhoto(attachments[Number(preview.dataset.previewAttachment)]); return; }
+    const button = event.target.closest("[data-remove-photo]"); if (button && !busy && !photoBusy) { attachments.splice(Number(button.dataset.removePhoto), 1); renderAttachments(); }
+  });
+  conversation.addEventListener("click", event => {
+    const button = event.target.closest("[data-preview-photo], [data-reload-photos]"); if (!button) return;
+    const [index, photoIndex] = (button.dataset.previewPhoto || button.dataset.reloadPhotos).split(":").map(Number);
+    const message = index < messages.length ? messages[index] : pending;
+    if (!message) return;
+    if (button.hasAttribute("data-reload-photos")) { void loadMessagePhotos(message); return; }
+    previewPhoto(message.photos?.[photoIndex]);
+  });
   conversation.addEventListener("click", async event => {
     const recovery = event.target.closest("[data-recover-actions]");
     if (recovery && !busy && !actionBusy) {
@@ -382,7 +414,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   updateControls(); updatePrivacy(); renderMessages();
   return {
     open() { keyboard.open(); resizeInput(); updateControls(); void checkConnection(); },
-    close() { keyboard.close(); },
+    close() { closePhotoPreview?.(); closePhotoPreview = null; keyboard.close(); },
     resetUser() {
       identityGeneration++; statusCheck?.controller.abort(); statusCheck = null; clearConversation(); closePanels(); connection = "checking"; checkedAt = 0; verificationSentAt = 0; input.value = ""; share.checked = true; range.value = "all";
       historyOwner = getUser()?.uid || null; conversations = []; activeId = null; historyReadable = true; historyWarning();

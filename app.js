@@ -166,6 +166,7 @@ const assistantPage = createAssistantPage(E.assistantPanel, {
   getUser: () => currentUser,
   verifyEmail: user => { if (auth) auth.languageCode = getLang() === "zh" ? "zh-CN" : "en"; return sendEmailVerification(user); },
   login: () => { setAuthMode("login"); E.authDialog.showModal(); },
+  onPreviewPhoto: photo => openPhotoPreview(photo, "对话图片预览"),
   onRecordsChanged: () => {
     dailyGoal = storage.getCachedProfile().dailyGoal || 2000;
     foodCatalogPage.render();
@@ -361,9 +362,18 @@ E.mealDayList?.addEventListener("click", event => {
   else if (button.hasAttribute("data-meal-photo")) {
     const record = mealRecords.find(record => record.id === button.dataset.id);
     const photo = record?.photos?.[Number(button.dataset.mealPhoto)];
-    if (isMealPhoto(photo)) { E.mealPhotoLarge.src = photo; E.mealPhotoViewer.showModal(); }
+    openPhotoPreview(photo, "食物照片预览");
   }
 });
+function openPhotoPreview(photo, label) {
+  if (!isMealPhoto(photo)) return;
+  E.mealPhotoViewer.setAttribute("aria-label", label);
+  E.mealPhotoLarge.alt = label;
+  E.mealPhotoLarge.src = photo;
+  if (!E.mealPhotoViewer.open) E.mealPhotoViewer.showModal();
+  return () => { if (E.mealPhotoViewer.open) E.mealPhotoViewer.close(); };
+}
+E.mealPhotoViewer.addEventListener("close", () => { if (!E.mealPhotoViewer.open) E.mealPhotoLarge.removeAttribute("src"); });
 E.mealActionEdit?.addEventListener("click", () => {
   const record = mealRecords.find(record => record.id === mealActionId);
   if (!record || mealActionBusy) return;
