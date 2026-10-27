@@ -1,9 +1,10 @@
 // Service Worker for 每日健康追踪 — offline support
-const CACHE_NAME = "health-tracker-v78";
+const CACHE_NAME = "health-tracker-v79";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./fridge.css?v=1",
   "./toilet.css?v=1",
   "./meals.css?v=8",
   "./revamp.css",
