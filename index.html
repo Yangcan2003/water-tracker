@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="history.css?v=2" />
     <link rel="stylesheet" href="themes.css?v=3" />
     <link rel="stylesheet" href="meals.css?v=10" />
+    <link rel="stylesheet" href="fridge.css?v=1" />
     <link rel="stylesheet" href="assistant.css?v=12" />
     <link rel="stylesheet" href="intake.css?v=4" />
     <link rel="stylesheet" href="workout.css?v=1" />
@@ -282,6 +283,7 @@
 
       <!-- ========== 当天饮食记录 ========== -->
       <div class="tab-panel meal-diary" id="mealPanel" hidden>
+        <button id="mealFridgeButton" class="meal-fridge-entry" type="button"><span class="fridge-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M5 10h14M8 5v2m0 6v3"/></svg></span><span><strong>我的冰箱</strong><small id="mealFridgeSummary">记下家里的食材，让 AI 帮你安排下一餐</small></span><span class="fridge-entry-chevron" aria-hidden="true">›</span></button>
         <div class="diary-quick-actions"><button id="mealQuickCamera" class="diary-camera-action" type="button"><span data-meal-icon="camera"></span><span><strong>拍照记录</strong><small>拍照或选择食物图片</small></span></button><button id="mealQuickText" class="diary-text-action" type="button"><span data-meal-icon="pen"></span><span><strong>文字记录</strong><small>简单写下吃了什么</small></span></button></div>
         <section id="mealDailyNutrition" class="diary-daily-nutrition" aria-labelledby="mealDailyHeading"><div class="diary-daily-heading"><h2 id="mealDailyHeading">当日总摄入</h2><span id="mealDailyCoverage">尚无记录</span></div><div class="diary-daily-energy"><strong id="mealDailyKcal">—</strong><span>kcal</span><small>总热量估算</small></div><button id="mealGoalButton" class="diary-goal-link" type="button"><span id="mealGoalContext">按体重设置每日营养目标</span><span>设置 ›</span></button><dl class="diary-daily-macros"><div><dt>碳水</dt><dd><strong id="mealDailyCarbs">—</strong><span> g</span></dd><dd id="mealTargetCarbsLine" class="diary-macro-target" hidden>目标 <span id="mealTargetCarbs">—</span> g</dd><dd class="diary-macro-progress" id="mealCarbsProgress" role="progressbar" aria-label="碳水摄入进度" aria-valuemin="0" aria-valuemax="100" hidden><span></span></dd><dd class="diary-macro-remaining" id="mealCarbsRemaining" hidden></dd></div><div><dt>蛋白质</dt><dd><strong id="mealDailyProtein">—</strong><span> g</span></dd><dd id="mealTargetProteinLine" class="diary-macro-target" hidden>目标 <span id="mealTargetProtein">—</span> g</dd><dd class="diary-macro-progress" id="mealProteinProgress" role="progressbar" aria-label="蛋白质摄入进度" aria-valuemin="0" aria-valuemax="100" hidden><span></span></dd><dd class="diary-macro-remaining" id="mealProteinRemaining" hidden></dd></div><div><dt>脂肪</dt><dd><strong id="mealDailyFat">—</strong><span> g</span></dd><dd id="mealTargetFatLine" class="diary-macro-target" hidden>目标 <span id="mealTargetFat">—</span> g</dd><dd class="diary-macro-progress" id="mealFatProgress" role="progressbar" aria-label="脂肪摄入进度" aria-valuemin="0" aria-valuemax="100" hidden><span></span></dd><dd class="diary-macro-remaining" id="mealFatRemaining" hidden></dd></div></dl><div class="diary-daily-guidance" aria-label="膳食纤维目标与钠上限"><section class="diary-nutrient-goal" id="mealFiberGoal"><div class="diary-nutrient-heading"><h3>膳食纤维</h3><span>目标</span></div><p class="diary-nutrient-intake"><strong id="mealDailyFiber">—</strong><small> g</small></p><p class="diary-nutrient-target">每日目标 <span id="mealTargetFiber">25</span> g</p><div class="diary-nutrient-progress" id="mealFiberProgress" role="progressbar" aria-label="膳食纤维进度" aria-valuemin="0" aria-valuemax="100"><span></span></div><p class="diary-nutrient-status" id="mealFiberRemaining">待补充营养数据</p><small class="diary-nutrient-coverage" id="mealFiberCoverage">尚无饮食记录</small></section><section class="diary-nutrient-goal" id="mealSodiumGoal"><div class="diary-nutrient-heading"><h3>钠</h3><span>上限</span></div><p class="diary-nutrient-intake"><strong id="mealDailySodium">—</strong><small> mg</small></p><p class="diary-nutrient-target">每日上限 <span id="mealTargetSodium">2000</span> mg</p><div class="diary-nutrient-progress" id="mealSodiumProgress" role="progressbar" aria-label="钠进度" aria-valuemin="0" aria-valuemax="100"><span></span></div><p class="diary-nutrient-status" id="mealSodiumRemaining">待补充营养数据</p><small class="diary-nutrient-coverage" id="mealSodiumCoverage">尚无饮食记录</small></section></div><details class="nutrition-more" id="mealDailyMore" hidden><summary>更多营养</summary><dl id="mealDailyExtra" class="nutrition-extra-values"></dl><p>仅合计已知数值；计入条数不代表当天已完整记录。</p></details><p id="mealDailyNote" role="status">添加饮食并识别营养后，显示当天的摄入合计。</p></section>
         <section class="diary-records-section" aria-label="当天饮食记录"><div class="diary-section-heading"><h2>今日记录</h2><span id="mealListCount">0 条记录</span></div><p id="mealDayStatus" class="diary-day-status" role="status" hidden>正在读取饮食记录…</p><div id="mealDayList" class="diary-today-list"></div>
@@ -383,6 +385,7 @@
         <section class="account-group" aria-labelledby="accountHealthHeading">
           <h3 id="accountHealthHeading">健康管理</h3>
           <div class="account-section">
+            <button class="account-row" id="accountFridgeButton" type="button"><span class="account-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M5 10h14M8 5v2m0 6v3"/></svg></span><span class="account-row-copy"><strong>我的冰箱</strong><small id="accountFridgeSummary">记下家里的食材，让 AI 帮你安排下一餐</small></span><svg class="account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
             <button class="account-row" id="accountNutritionButton" type="button"><span class="account-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="m15 9 6-6m-5 0h5v5"/></svg></span><span class="account-row-copy"><strong>每日营养目标</strong><small id="accountNutritionContext">设置计算体重，得到每日摄入目标</small><small class="account-nutrition-targets"><span>碳水 <b id="accountTargetCarbs">—</b> g</span><span>蛋白质 <b id="accountTargetProtein">—</b> g</span><span>脂肪 <b id="accountTargetFat">—</b> g</span></small><small class="account-nutrition-targets">纤维目标 <b id="accountTargetFiber">25</b> g · 钠上限 <b id="accountTargetSodium">2000</b> mg</small></span><svg class="account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
             <button class="account-row" id="accountFoodsButton" type="button"><span class="account-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 3v7m3-7v7m-3-3h3m-1.5 3v11M20 3v18M20 3c-5 2-5 8 0 9"/></svg></span><span class="account-row-copy"><strong>常吃食物</strong><small id="accountFoodsSummary">保存常吃食物的份量与营养，供 AI 识别参考</small></span><svg class="account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
             <button class="account-row" id="accountMedicineButton" type="button"><span class="account-row-icon account-icon-green" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 5-4 4a6 6 0 0 0 8 8l4-4a6 6 0 0 0-8-8Zm-2 2 10 10"/></svg></span><span class="account-row-copy"><strong>药物设置</strong><small id="accountMedicineValue">管理剂量与服用频率</small></span><svg class="account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
@@ -535,6 +538,34 @@
         <p class="settings-help" id="recordTimeHint">选择时间后，点击“确认修改”保存。</p>
         <button class="primary-button" id="recordTimeSaveButton" type="submit">确认修改</button>
         <button class="text-button" type="button" onclick="this.closest('dialog').close()">取消</button>
+      </form>
+    </dialog>
+
+    <dialog id="fridgeDialog" class="fridge-dialog" aria-labelledby="fridgeTitle">
+      <header class="fridge-heading"><div><span class="fridge-eyebrow">MY KITCHEN</span><h2 id="fridgeTitle">我的冰箱</h2><p id="fridgeCount">把家里有什么，轻轻记下来。</p></div><button class="close-button" type="button" aria-label="关闭我的冰箱" onclick="this.closest('dialog').close()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+      <div class="fridge-body">
+        <div class="fridge-top-actions"><button id="fridgeAdd" type="button">＋ 添加食材</button><button id="fridgeAIAdd" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5ZM20 2v4m-2-2h4"/></svg>AI 帮我存</button></div>
+        <p id="fridgePriority" class="fridge-priority" hidden></p>
+        <input id="fridgeSearch" type="search" placeholder="搜索食材或备注" aria-label="搜索冰箱食材" />
+        <div id="fridgeFilters" class="fridge-filters" role="group" aria-label="按存放位置筛选"><button type="button" data-fridge-location="all" aria-pressed="true">全部</button><button type="button" data-fridge-location="refrigerated" aria-pressed="false">冷藏</button><button type="button" data-fridge-location="frozen" aria-pressed="false">冷冻</button><button type="button" data-fridge-location="pantry" aria-pressed="false">常温</button><button type="button" data-fridge-location="unknown" aria-pressed="false">未指定</button></div>
+        <div id="fridgeList" class="fridge-list"></div>
+        <p class="fridge-help">数量与到期日都可留空。提醒以你填写的日期为准。</p>
+      </div>
+      <footer class="fridge-footer"><button id="fridgePlan" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg>用现有食材配餐</button><small>交给助手，结合营养目标与今日摄入安排</small></footer>
+    </dialog>
+    <dialog id="fridgeEditor" class="fridge-dialog fridge-editor" aria-labelledby="fridgeEditorTitle">
+      <form id="fridgeForm">
+        <header class="fridge-heading"><div><span class="fridge-eyebrow">A LITTLE FRESHNESS</span><h2 id="fridgeEditorTitle">添加食材</h2></div><button class="close-button" type="button" aria-label="关闭食材编辑" onclick="this.closest('dialog').close()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+        <div class="fridge-body fridge-fields">
+          <label for="fridgeName">食材名称 <small>必填</small></label><input id="fridgeName" maxlength="60" placeholder="例如：鸡蛋、西兰花、燕麦" required />
+          <label class="fridge-sr-only" for="fridgeFoodReference">从常吃食物带入名称</label><select id="fridgeFoodReference"><option value="">从常吃食物带入名称（可选）</option></select>
+          <div class="fridge-quantity-fields"><label for="fridgeQuantity">剩余数量 <small>可留空</small><input id="fridgeQuantity" type="number" min="0.001" max="1000000" step="0.001" inputmode="decimal" placeholder="有多少？" /></label><label for="fridgeUnit">单位<select id="fridgeUnit"><option>个</option><option>g</option><option>kg</option><option>ml</option><option>L</option><option>份</option><option>袋</option><option>盒</option><option>瓶</option><option>颗</option><option>根</option><option>把</option><option>片</option></select></label></div>
+          <label for="fridgeLocation">存放位置</label><select id="fridgeLocation"><option value="unknown">未指定</option><option value="refrigerated">冷藏</option><option value="frozen">冷冻</option><option value="pantry">常温</option></select>
+          <label for="fridgeExpires">到期日 <small>可留空</small></label><input id="fridgeExpires" type="date" /><p class="fridge-help">按包装或你的记录填写，临期时会在冰箱内提示。</p>
+          <label for="fridgeNote">备注 <small>可选</small></label><textarea id="fridgeNote" rows="2" maxlength="160" placeholder="品牌、开封情况或其他想记住的事"></textarea>
+          <p id="fridgeMessage" class="fridge-message" role="alert"></p><button id="fridgeRemove" class="fridge-remove" type="button" hidden>吃完了 / 移除食材</button>
+        </div>
+        <footer class="fridge-footer"><button id="fridgeSave" type="submit">保存食材</button></footer>
       </form>
     </dialog>
 

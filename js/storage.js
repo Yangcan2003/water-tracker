@@ -7,6 +7,7 @@ import { MealPhotoStore } from "./meal-photos.js";
 import { normalizeMealNutrition } from "./meal-nutrition.js";
 import { normalizeNutritionGoal } from "./nutrition-goals.js";
 import { normalizeFoodCatalog } from "./food-catalog.js";
+import { mergeFridgeInventory, normalizeFridgeInventory, applyFridgeChange } from "./fridge.js";
 import { MAX_MEAL_PHOTOS, isMealPhoto } from "./meals.js";
 import { inHistoryRange } from "./history-range.js";
 import { mergeMeasurements, validateMeasurement } from "./body-measurements.js";
@@ -62,6 +63,8 @@ class StorageManager {
     this.recordSyncRequests = new Map();
     this.dayRevisions = new Map();
     this.profileRevision = 0;
+    this.fridgeRevision = 0;
+    this.fridgeWriteTails = new Map();
     this.historyCache = null;
     this.historyRequest = null;
     this.historyRevision = 0;
@@ -83,8 +86,10 @@ class StorageManager {
     this.recordSyncRequests.clear();
     this.dayRevisions.clear();
     this.profileRevision++;
+    this.fridgeRevision++;
     this._restoreHistoryRanges();
     this._claimLocalBodyMeasurements();
+    this._claimLocalFridge();
     this.notifySyncChange();
     window.dispatchEvent(new Event("body-measurements-change"));
   }
@@ -93,7 +98,8 @@ class StorageManager {
 
   get syncStatus() {
     const hasPendingWrites = this.isCloud && (this.hasLocalData()
-      || Object.keys(this._loadLocal().bodyMeasurementPending?.[this.currentUser.uid] || {}).length > 0);
+      || Object.keys(this._loadLocal().bodyMeasurementPending?.[this.currentUser.uid] || {}).length > 0
+      || Object.keys(this._loadLocal().fridgePending?.[this.currentUser.uid] || {}).length > 0);
     const state = !this.isCloud ? "local"
       : !navigator.onLine ? "offline"
       : this.sync.failures.size ? "error"
@@ -118,6 +124,7 @@ class StorageManager {
     // Rebuild batches from the latest durable intents, never replay an expired
     // batch concurrently with the individual document retries it contains.
     if (this.hasLocalData() || this.sync.failures.has(`merge:${this.currentUser.uid}`)) await this.mergeLocalToCloud();
+    await this._syncFridge().catch(() => {});
     this.invalidateHistory();
   }
 
@@ -339,15 +346,18 @@ class StorageManager {
     if (this.isCloud) {
       const generation = this.sync.generation;
       const revision = this.profileRevision;
+      const fridgeRevision = this.fridgeRevision;
       const uid = this.currentUser.uid;
       try {
         const snap = await getDoc(doc(this.db, "users", uid));
         if (force && snap.metadata?.fromCache) throw Object.assign(new Error("无法刷新云端档案，请联网后重试"), { code: "unavailable" });
-        if (generation !== this.sync.generation) return this._loadLocal().profile;
+        if (generation !== this.sync.generation) return this.getCachedProfile();
         const cloud = snap.data() || {};
         // 合并到本地缓存
         const data = this._loadLocal();
-        if (revision !== this.profileRevision) return data.profile;
+        data.fridgeInventories ||= {};
+        if (fridgeRevision === this.fridgeRevision) data.fridgeInventories[uid] = mergeFridgeInventory(cloud.fridgeInventory, data.fridgeInventories[uid], data.fridgePending?.[uid]);
+        if (revision !== this.profileRevision) return this.getCachedProfile();
         const pendingProfile = data.pendingUpload?.profile ? data.profile : {};
         data.profile = {
           dailyGoal: Number(cloud.dailyGoal) || 2000,
@@ -365,20 +375,96 @@ class StorageManager {
         this._saveLocal(data);
         window.dispatchEvent(new Event("body-measurements-change"));
         void this._syncBodyMeasurements().catch(() => {});
-        return data.profile;
+        window.dispatchEvent(new Event("fridge-change"));
+        void this._syncFridge().catch(() => {});
+        return this.getCachedProfile();
       } catch (e) {
         if (force) throw e;
         // 降级到本地
         if (generation === this.sync.generation) void this._syncBodyMeasurements().catch(() => {});
-        return this._loadLocal().profile;
+        return this.getCachedProfile();
       }
     }
-    return this._loadLocal().profile;
+    return this.getCachedProfile();
   }
 
   // 同步返回本地缓存的 profile，用于在云端数据返回前先渲染界面，避免闪烁。
   getCachedProfile() {
-    return this._loadLocal().profile;
+    return { ...this._loadLocal().profile, fridgeInventory: this.getCachedFridgeInventory() };
+  }
+
+  getCachedFridgeInventory() {
+    return normalizeFridgeInventory(this._loadLocal().fridgeInventories?.[this.currentUser?.uid || "__local__"]);
+  }
+
+  _claimLocalFridge() {
+    if (!this.currentUser) return;
+    const data = this._loadLocal(), uid = this.currentUser.uid;
+    const guest = data.fridgeInventories?.__local__;
+    if (!guest || !Object.keys(guest).length) { window.dispatchEvent(new Event("fridge-change")); return; }
+    data.fridgeInventories[uid] = { ...guest, ...data.fridgeInventories[uid] };
+    data.fridgePending ||= {};
+    data.fridgePending[uid] = { ...guest, ...data.fridgePending[uid] };
+    delete data.fridgeInventories.__local__;
+    delete data.fridgePending.__local__;
+    this._saveLocal(data);
+    window.dispatchEvent(new Event("fridge-change"));
+  }
+
+  async saveFridgeChange(change) {
+    const data = this._loadLocal(), scope = this.currentUser?.uid || "__local__";
+    const { inventory, entry } = applyFridgeChange(data.fridgeInventories?.[scope], { ...change, updatedAt: new Date().toISOString() });
+    data.fridgeInventories ||= {}; data.fridgePending ||= {};
+    data.fridgeInventories[scope] = inventory;
+    data.fridgePending[scope] = { ...data.fridgePending[scope], [entry.id]: entry };
+    if (!this._saveLocal(data)) throw new Error("设备存储空间不足，食材未保存");
+    this.fridgeRevision++;
+    window.dispatchEvent(new Event("fridge-change"));
+    void this._syncFridge().catch(() => {});
+    return entry;
+  }
+
+  async _syncFridge() {
+    if (!this.isCloud) return;
+    const uid = this.currentUser.uid, cloudDb = this.db, generation = this.sync.generation;
+    // Serialize writes for this account so an earlier slow write cannot restore old quantities.
+    if (this.fridgeSync?.uid === uid && this.fridgeSync.generation === generation) return this.fridgeSync.promise;
+    const run = async () => {
+      while (generation === this.sync.generation) {
+        if (!Object.keys(this._loadLocal().fridgePending?.[uid] || {}).length) return;
+        await this.sync.run({ key: `fridge:${uid}`, label: "我的冰箱", kind: "write", retry: false, operation: ({ signal }) => {
+          // A timed-out Firebase request may still finish. Keep its actual
+          // network promise in the queue, and rebuild retries from latest data.
+          const previous = this.fridgeWriteTails.get(uid) || Promise.resolve();
+          const write = previous.catch(() => {}).then(async () => {
+            if (signal.aborted) throw signal.reason;
+            if (generation !== this.sync.generation) return;
+            const pending = { ...this._loadLocal().fridgePending?.[uid] };
+            if (!Object.keys(pending).length) return;
+            await firebaseSetDoc(doc(cloudDb, "users", uid), { fridgeInventory: pending }, { merge: true });
+            if (generation !== this.sync.generation) return;
+            const data = this._loadLocal();
+            for (const [id, sent] of Object.entries(pending)) {
+              if (JSON.stringify(data.fridgePending?.[uid]?.[id]) === JSON.stringify(sent)) delete data.fridgePending[uid][id];
+            }
+            this._saveLocal(data);
+          });
+          const tail = write.catch(() => {});
+          this.fridgeWriteTails.set(uid, tail);
+          void tail.then(() => {
+            if (this.fridgeWriteTails.get(uid) === tail) {
+              this.fridgeWriteTails.delete(uid);
+              if (signal.aborted && generation === this.sync.generation && Object.keys(this._loadLocal().fridgePending?.[uid] || {}).length) void this._syncFridge().catch(() => {});
+            }
+          });
+          return write;
+        } });
+      }
+    };
+    const task = { uid, generation, promise: null };
+    this.fridgeSync = task;
+    task.promise = run().finally(() => { if (this.fridgeSync === task) this.fridgeSync = null; });
+    return task.promise;
   }
 
   getCachedDay(dateKey) {
@@ -1188,7 +1274,7 @@ class StorageManager {
       await this.sync.run({ key: `merge:${this.currentUser.uid}`, label: "记录上传", kind: "write",
         timeoutMs: this.syncBatchTimeoutMs, recoverOnLateSuccess: false, retry: false, operation: async ({ signal }) => {
           const deadline = Date.now() + this.syncBatchTimeoutMs;
-          await Promise.allSettled(this._pendingRecordChanges().map(change => this._syncRecordChange(change)));
+          await Promise.allSettled([...this._pendingRecordChanges().map(change => this._syncRecordChange(change)), this._syncFridge()]);
           if (signal.aborted || !this._canContinueSyncBatch(generation, deadline)) return;
           await this._mergeLocalToCloud(deadline);
         } });

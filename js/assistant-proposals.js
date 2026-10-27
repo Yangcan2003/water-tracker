@@ -60,7 +60,7 @@ export function restoreAssistantProposal(value) {
     const change = prepareAssistantAction({ ...action, ref: action.operation === "create" ? null : "saved-target" }, { references });
     change.writeID = value.writeID;
     change.restored = true;
-    if (change.category === "food" && change.operation === "create") change.after.id = value.writeID;
+    if (["food", "fridge"].includes(change.category) && change.operation === "create") change.after.id = value.writeID;
     change.photoIds = photoIDs(value.photoIds);
     change.state = ["applied", "cancelled"].includes(value.state) ? value.state : "pending";
     return change;

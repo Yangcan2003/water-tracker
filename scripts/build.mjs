@@ -35,6 +35,7 @@ const assets = [
   "meta.css",
   "history.css",
   "meals.css",
+  "fridge.css",
   "themes.css",
   "assistant.css",
   "intake.css",

@@ -24,6 +24,55 @@ beforeEach(() => {
   storage.setUser(user, {});
 });
 
+test("fridge actions save only on confirmation and restored cards remain idempotent across account changes", async () => {
+  const create = await propose("create", "fridge", { name: "鸡蛋", quantity: 6, unit: "个", location: "refrigerated", expiresOn: "2026-11-01" });
+  assert.equal(Object.keys(storage.getCachedFridgeInventory()).length, 0);
+  const restored = restoreAssistantProposal(serializeAssistantProposal(create));
+  assert.equal(restored.state, "pending");
+  await executeAssistantAction(storage, create, identity);
+  await executeAssistantAction(storage, restored, identity);
+  await storage._syncFridge();
+  assert.equal(Object.keys(storage.getCachedFridgeInventory()).length, 1);
+  const data = await catalog(), ref = data.data.records.find(row => row.category === "fridge").ref;
+  const update = prepareAssistantAction({ operation: "update", category: "fridge", ref, values: { quantity: 4 } }, data);
+  const stable = restoreAssistantProposal(serializeAssistantProposal(update));
+  assert.equal(stable.state, "pending");
+  await executeAssistantAction(storage, stable, identity);
+  await storage._syncFridge();
+  assert.equal(storage.getCachedFridgeInventory()[create.after.id].quantity, 4);
+  assert.equal(mock.documents.get("users/test").fridgeInventory[create.after.id].quantity, 4);
+  const stale = prepareAssistantAction({ operation: "update", category: "fridge", ref, values: { quantity: 2 } }, data);
+  await assert.rejects(executeAssistantAction(storage, stale, identity), /发生变化/);
+  storage.setUser({ uid: "another" }, {});
+  assert.equal(Object.keys(storage.getCachedFridgeInventory()).length, 0);
+  await assert.rejects(executeAssistantAction(storage, stale, identity), /账号/);
+  storage.setUser(user, {});
+  assert.equal(storage.getCachedFridgeInventory()[create.after.id].quantity, 4);
+  const latest = await catalog();
+  const remove = prepareAssistantAction({ operation: "delete", category: "fridge", ref: latest.data.records.find(row => row.category === "fridge").ref, values: {} }, latest);
+  await executeAssistantAction(storage, remove, identity); await storage._syncFridge();
+  await storage.getProfile({ force: true });
+  assert.equal(storage.getCachedFridgeInventory()[create.after.id].deleted, true);
+  assert.equal(storage.getCachedDay(today).meal.length, 0);
+});
+
+test("name-only fridge additions work without shared history and pending local edits survive cloud refresh", async () => {
+  const create = prepareAssistantAction({ operation: "create", category: "fridge", values: { name: "燕麦" } }, buildActionCatalog([], {}, null));
+  await executeAssistantAction(storage, create, identity); await storage._syncFridge();
+  assert.equal(create.after.quantity, null); assert.equal(create.after.location, "unknown");
+  let releaseWrite;
+  mock.writeGate = new Promise(resolve => { releaseWrite = resolve; });
+  storage.sync.timeoutMs = 15;
+  await storage.saveFridgeChange({ operation: "update", before: create.after, after: { ...create.after, quantity: 2, unit: "袋" }, id: create.after.id });
+  await storage.getProfile({ force: true });
+  assert.equal(storage.getCachedFridgeInventory()[create.after.id].quantity, 2);
+  await assert.rejects(storage._syncFridge(), /超时/);
+  await storage.saveFridgeChange({ operation: "update", before: { ...create.after, quantity: 2, unit: "袋" }, after: { ...create.after, quantity: 1, unit: "袋" }, id: create.after.id });
+  mock.writeGate = null; releaseWrite(); storage.sync.timeoutMs = 12000;
+  await storage.retryFailedRequests();
+  assert.equal(mock.documents.get("users/test").fridgeInventory[create.after.id].quantity, 1);
+});
+
 test("assistant food proposals create library references only after confirmation, then preserve unrelated foods on update", async () => {
   const create = await propose("create", "food", favorite);
   assert.equal(storage.getCachedProfile().foodCatalog?.length || 0, 0);

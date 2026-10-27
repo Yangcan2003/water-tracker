@@ -4,13 +4,15 @@ import { normalizeMealNutrition } from "./meal-nutrition.js";
 import { normalizeNutritionGoal } from "./nutrition-goals.js";
 import { validateMeasurement, measurementHistory } from "./body-measurements.js";
 import { ASSISTANT_VALUE_TYPES } from "./assistant-protocol.js";
+import { normalizeFridgeItem, fridgeItems, fridgeQuantityLabel, FRIDGE_LOCATIONS } from "./fridge.js";
 
-export const ACTION_LABELS = { water: "饮水", meal: "饮食", medicine: "服药", supplement: "补剂", toilet: "如厕", workout: "训练", body: "身体测量", goals: "目标", food: "常吃食物" };
+export const ACTION_LABELS = { water: "饮水", meal: "饮食", medicine: "服药", supplement: "补剂", toilet: "如厕", workout: "训练", body: "身体测量", goals: "目标", food: "常吃食物", fridge: "我的冰箱" };
 const nutrientKeys = FOOD_NUTRIENTS.map(field => field.key);
 const sources = { water: "waterRecs", meal: "mealRecs", medicine: "medRecs", supplement: "suppRecs", toilet: "toiletRecs" };
 const fields = {
   water: ["amount"], meal: ["name", "note", "mealType", "portion", ...nutrientKeys],
   food: ["name", "aliases", "note", "servingAmount", "servingUnit", ...nutrientKeys],
+  fridge: ["name", "quantity", "unit", "location", "expiresOn", "note"],
   medicine: ["name", "count", "dosage"], supplement: ["name", "count", "dosage"], toilet: ["type"],
   workout: ["activity", "duration", "focus", "intensity", "note"], body: ["height", "weight", "bodyFat"],
   goals: ["waterGoalMl", "goalWeightKg", "carbsRatio", "proteinRatio", "fatRatio"],
@@ -42,13 +44,14 @@ export function buildActionCatalog(days, measurements, profile, question = "") {
   const rows = [];
   const foodIntent = /常吃|常用|食物库/.test(question);
   for (const record of normalizeFoodCatalog(profile?.foodCatalog)) rows.push({ category: "food", date: "", record });
+  for (const record of fridgeItems(profile?.fridgeInventory)) rows.push({ category: "fridge", date: "", record });
   for (const day of days) {
     for (const [category, source] of Object.entries(sources)) for (const record of day[source] || []) if (record.id) rows.push({ category, date: day.dateKey, record });
     if (day.isWorkout || day.workoutDetail?.activity) rows.push({ category: "workout", date: day.dateKey, record: { ...day.workoutDetail, isWorkout: day.isWorkout, logDate: day.dateKey, id: day.dateKey } });
   }
   for (const record of measurementHistory(measurements)) rows.push({ category: "body", date: record.date, record });
   const dates = new Set(question.match(/\d{4}-\d{2}-\d{2}/g) || []);
-  const relevance = row => row.category === "food" ? Number(foodIntent) + Number(question.includes(row.record.name)) * 3 : Number(dates.has(row.date));
+  const relevance = row => row.category === "food" ? Number(foodIntent) + Number(question.includes(row.record.name)) * 3 : row.category === "fridge" ? Number(/冰箱|食材|配餐|库存/.test(question)) * 2 + Number(question.includes(row.record.name)) * 3 : Number(dates.has(row.date));
   rows.sort((a, b) => relevance(b) - relevance(a) || b.date.localeCompare(a.date));
   const references = new Map(), records = [];
   let size = 0;
@@ -77,6 +80,11 @@ export function prepareAssistantAction(action, catalog, now = new Date()) {
   const patch = Object.fromEntries(Object.entries(supplied).filter(([, value]) => value != null));
   if (operation === "update" && !Object.keys(patch).length && !action.time) throw new Error("没有需要修改的内容");
   const previous = target?.record || null;
+  if (category === "fridge") {
+    const next = operation === "delete" ? null : normalizeFridgeItem({ ...actionRecordValues(category, previous), ...patch, id: previous?.id || generateLocalId() });
+    if (operation !== "delete" && !next) throw new Error("请检查食材名称、数量、单位、存放位置与到期日");
+    return { operation, category, date: null, before: previous, after: next, target, writeID: next?.id || generateLocalId(), state: "pending" };
+  }
   if (category === "food") {
     let next = null;
     if (operation !== "delete") {
@@ -130,6 +138,7 @@ export function describeAssistantRecord(category, record, date) {
   if (!record) return "无";
   const v = actionRecordValues(category, record), time = record.recordedAt ? toTimeValue(record.recordedAt?.toDate?.() || new Date(record.recordedAt)) : "";
   const extras = EXTRA_NUTRIENTS.filter(field => v[field.key] != null).map(field => `${field.label} ${v[field.key]} ${field.unit}`).join(" / ");
+  if (category === "fridge") return `${v.name} · ${fridgeQuantityLabel(v)} · ${FRIDGE_LOCATIONS[v.location]}${v.expiresOn ? ` · 到期 ${v.expiresOn}` : " · 未填到期日"}${v.note ? ` · ${v.note}` : ""}`;
   if (category === "food") return `${v.name}${v.aliases ? `（${v.aliases}）` : ""} · ${foodServingLabel(v)} · ${v.kcal} kcal / 碳水 ${v.carbsG} g / 蛋白质 ${v.proteinG} g / 脂肪 ${v.fatG} g${extras ? ` · ${extras}` : ""}${v.note ? ` · ${v.note}` : ""}`;
   const descriptions = {
     water: `${v.amount} ml`, meal: `${({ breakfast: "早餐", lunch: "午餐", dinner: "晚餐", snack: "加餐" })[v.mealType] || "饮食"} · ${v.name}${v.portion ? ` · ${v.portion}` : ""}${v.kcal != null ? ` · ${v.kcal} kcal / 碳水 ${v.carbsG} g / 蛋白质 ${v.proteinG} g / 脂肪 ${v.fatG} g` : ""}${v.note ? ` · ${v.note}` : ""}`,
@@ -158,6 +167,12 @@ export async function executeAssistantAction(storage, change, { uid, getUser }) 
   if (change.state !== "pending") throw new Error("这项操作已处理，请勿重复执行");
   change.state = "applying";
   try {
+  if (change.category === "fridge") {
+    await storage.getProfile({ force: true }); guard();
+    if (storage.syncStatus.failures.some(item => item.kind === "read")) throw new Error("无法核对最新冰箱库存，请联网后重试");
+    const saved = await storage.saveFridgeChange({ operation: change.operation, before: change.before, after: change.after, id: change.after?.id || change.before.id });
+    change.state = "applied"; guard(); return saved;
+  }
   if (change.category === "food") {
     const profile = await storage.getProfile({ force: true }); guard();
     if (storage.syncStatus.failures.some(item => item.kind === "read")) throw new Error("无法核对最新食物库，请联网后重试");

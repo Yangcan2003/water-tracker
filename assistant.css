@@ -34,7 +34,7 @@ body[data-section="assistant"].assistant-keyboard .assistant-dock { padding-bott
 .ai-welcome-icon { width: 48px; height: 48px; display: grid; place-items: center; margin: 0 auto 20px; color: var(--theme-text); }
 .ai-welcome-icon svg { width: 28px !important; height: 28px !important; }
 .ai-welcome h1 { margin: 0; font-size: clamp(23px, 6.3vw, 28px); line-height: 1.4; font-weight: 600; letter-spacing: -.04em; color: var(--theme-text); }
-.assistant-suggestions { display: flex; justify-content: center; gap: 10px; margin: 26px auto 0; }
+.assistant-suggestions { display: flex; flex-wrap:wrap; justify-content: center; gap: 10px; margin: 26px auto 0; }
 .assistant-suggestions button { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 44px; padding: 10px 15px; background: var(--theme-surface); color: var(--theme-text); border: 1px solid var(--theme-line); border-radius: 24px; text-align: left; font-size: 12px !important; }
 .assistant-suggestions svg { width: 17px !important; height: 17px !important; color: var(--theme-muted); }
 .assistant-messages { display: grid; gap: 29px; padding: 22px 0 20px; }

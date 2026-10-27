@@ -10,10 +10,11 @@ const slowWrites = process.argv.includes("--slow-writes");
 const slowStartup = process.argv.includes("--slow-startup");
 const delayedAuth = process.argv.includes("--delayed-auth");
 const stalledSync = process.argv.includes("--stalled-sync");
+const cleanFixture = process.argv.includes("--clean");
 const port = Number(process.env.QA_PORT) || (localMode ? 4183 : 4182);
 await cp("www", directory, { recursive: true });
 await build({
-  stdin: { contents: `import { mock } from "./tests/firebase-mock.mjs"; mock.failMealOnce = ${!localMode && !slowWrites && !slowStartup && !delayedAuth && !stalledSync}; mock.localMode = ${localMode}; mock.writeDelay = ${slowStartup ? 10000 : slowWrites ? 1500 : 0}; mock.readDelay = ${slowStartup ? 10000 : 0}; mock.authDelay = ${delayedAuth ? 6000 : 0}; mock.repeatAuthDelay = ${delayedAuth ? 12000 : 0}; ${slowStartup || delayedAuth || stalledSync ? 'import { seedStartupFixture } from "./tests/startup-fixture.mjs"; seedStartupFixture();' : ''} ${stalledSync ? 'import { stallFixtureNetwork } from "./tests/stalled-sync-fixture.mjs"; stallFixtureNetwork();' : ''} ${historyFixture ? 'import { seedHistoryFixture } from "./tests/history-fixture.mjs"; seedHistoryFixture();' : ''} import "./app.js";`, resolveDir: process.cwd() },
+  stdin: { contents: `import { mock } from "./tests/firebase-mock.mjs"; mock.failMealOnce = ${!cleanFixture && !localMode && !slowWrites && !slowStartup && !delayedAuth && !stalledSync}; mock.localMode = ${localMode}; mock.writeDelay = ${slowStartup ? 10000 : slowWrites ? 1500 : 0}; mock.readDelay = ${slowStartup ? 10000 : 0}; mock.authDelay = ${delayedAuth ? 6000 : 0}; mock.repeatAuthDelay = ${delayedAuth ? 12000 : 0}; ${slowStartup || delayedAuth || stalledSync ? 'import { seedStartupFixture } from "./tests/startup-fixture.mjs"; seedStartupFixture();' : ''} ${stalledSync ? 'import { stallFixtureNetwork } from "./tests/stalled-sync-fixture.mjs"; stallFixtureNetwork();' : ''} ${historyFixture ? 'import { seedHistoryFixture } from "./tests/history-fixture.mjs"; seedHistoryFixture();' : ''} import "./app.js";`, resolveDir: process.cwd() },
   bundle: true, format: "esm", target: "safari15", outfile: `${directory}/app.js`,
   plugins: [{ name: "test-firebase", setup(build) {
     build.onResolve({ filter: /^firebase\/(app|auth|firestore)$/ }, () => ({ path: new URL("./firebase-mock.mjs", import.meta.url).pathname }));

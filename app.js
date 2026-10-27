@@ -15,6 +15,7 @@ import { loadDaySnapshot } from "./js/day-loader.js";
 import { createBodyMeasurementsPage } from "./js/body-measurements-page.js";
 import { createNutritionGoalsPage } from "./js/nutrition-goals-page.js";
 import { createFoodCatalogPage } from "./js/food-catalog-page.js";
+import { createFridgePage } from "./js/fridge-page.js";
 import { createAssistantPage } from "./js/assistant-page.js";
 import { createHistoryPage } from "./js/history-page.js";
 import { historyDetailHTML } from "./js/history-detail.js";
@@ -161,6 +162,10 @@ const historyPage = createHistoryPage(E.timelinePanel, {
 const bodyMeasurementsPage = createBodyMeasurementsPage({ storage, showToast });
 const nutritionGoalsPage = createNutritionGoalsPage({ storage, showToast });
 const foodCatalogPage = createFoodCatalogPage({ storage, showToast });
+const fridgePage = createFridgePage({ storage, showToast, onAskAssistant: prompt => {
+  if (!assistantPage.compose(prompt)) { showToast("请先完成或清空助手中当前的输入，再试一次", false); return false; }
+  switchMain("assistant"); return true;
+} });
 const assistantPage = createAssistantPage(E.assistantPanel, {
   storage,
   getUser: () => currentUser,
@@ -170,6 +175,7 @@ const assistantPage = createAssistantPage(E.assistantPanel, {
   onRecordsChanged: () => {
     dailyGoal = storage.getCachedProfile().dailyGoal || 2000;
     foodCatalogPage.render();
+    fridgePage.render();
     historyPage.reset();
     void loadDay();
   },
@@ -1646,6 +1652,7 @@ function renderAccountPage() {
   bodyMeasurementsPage.render();
   nutritionGoalsPage.render();
   foodCatalogPage.render();
+  fridgePage.render();
   E.accountAvatar.innerHTML = avatarType === "custom" && avatarUrl
     ? `<img src="${esc(avatarUrl)}" alt="">`
     : genAvatarSVG(avatarColor, 72);

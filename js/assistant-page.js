@@ -28,6 +28,7 @@ const CATEGORIES = ASSISTANT_CATEGORIES.map(item => item.key);
 const PROMPTS = [
   ["health", "回顾状态", "请结合我的健康记录，回顾近期状态，区分观察、推测与缺失数据，给出值得关注的变化和两个可以采取的小行动。"],
   ["food", "今天怎么吃", "请结合饮食和身体记录，帮我安排今天的饮食思路。不要臆测热量，信息不足时先问我必要的问题。"],
+  ["food", "用冰箱食材配餐", "请结合我的冰箱当前库存、每日营养目标和今天的摄入安排下一餐，优先使用未过标注日期的临期食材，并列出需补买的东西。先问清忌口、人数和可用时间，制定菜单先不要扣库存。"],
 ];
 
 export function createAssistantPage(root, { storage, getUser, login, verifyEmail, plan = chatGPTPlan, request = plan?.request ?? assistantRequest, historyStore = createAssistantHistory(), onRecordsChanged = () => {}, onPreviewPhoto = () => {} }) {
@@ -200,7 +201,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
     find("#assistantRecordsLabel").textContent = share.checked ? (range.value === "all" ? "全部记录" : `近 ${range.value} 天`) : "不结合记录";
     find("#assistantRecordsToggle").dataset.enabled = String(share.checked);
     find("#assistantRecordsToggle").setAttribute("aria-label", share.checked ? `健康数据：${label}，点击调整` : "健康数据已关闭，点击调整");
-    find("#assistantPrivacy").textContent = share.checked ? "提问时读取并发送至 OpenAI" : "仅使用对话和本次添加的图片";
+    find("#assistantPrivacy").textContent = share.checked ? "提问时将健康记录、常吃食物和冰箱库存发送至 OpenAI" : "仅使用对话和本次添加的图片";
   }
   async function checkConnection({ force = false } = {}) {
     if (statusCheck) return statusCheck.promise;
@@ -272,7 +273,7 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
         try { const change = prepareAssistantAction(action, catalog); if (change.category === "meal" && change.operation === "create" && selectedPhotos.length) { change.after.photos = selectedPhotos; change.photoIds = pending.photoIds; } return change; }
         catch (error) { return { state: "invalid", error: error.message }; }
       });
-      const source = context ? `${new Date(context.snapshot.generatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 读取 · ${context.range.startDate} — ${context.range.endDate} · ${context.summarized ? "健康记录摘要" : "健康记录"}${context.foodCatalog?.count ? ` · 常吃食物 ${context.foodCatalog.count} 种` : ""}` : "";
+      const source = context ? `${new Date(context.snapshot.generatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 读取 · ${context.range.startDate} — ${context.range.endDate} · ${context.summarized ? "健康记录摘要" : "健康记录"}${context.foodCatalog?.count ? ` · 常吃食物 ${context.foodCatalog.count} 种` : ""}${context.fridgeInventory?.count ? ` · 冰箱 ${context.fridgeInventory.count} 种` : ""}` : "";
       const actionNotice = proposals.some(change => change.state === "pending") ? "包含待确认的记录变更" : !parsed.actions.length && /保存|添加|记录|新增|修改|删除/.test(question) && /确认.*保存|保存.*确认|按钮|添加建议/.test(parsed.reply) ? "助手未返回保存卡片" : "";
       if (recoveryOf && proposals.some(change => change.state === "pending")) recoveryOf.actionNotice = "已重新生成保存卡片，请在最新回复中确认。";
       messages.push({ role: "user", content: question, photos: selectedPhotos, photoIds: pending.photoIds }, { role: "assistant", content: parsed.reply.slice(0, 6000), reasoningSummary: String(result.reasoningSummary || live.reasoningSummary || "").slice(0, 4000), proposals, actionNotice, source: [source, result.incomplete || parsed.reply.length > 6000 ? "回答未完整，可缩小问题继续提问" : ""].filter(Boolean).join(" · ") }); pending = null;
@@ -413,6 +414,10 @@ export function createAssistantPage(root, { storage, getUser, login, verifyEmail
   const keyboard = createAssistantKeyboard(root, input, scroll);
   updateControls(); updatePrivacy(); renderMessages();
   return {
+    compose(prompt) {
+      if (busy || actionBusy || planBusy || photoBusy || pending || input.value.trim() || attachments.length) return false;
+      input.value = prompt; resizeInput(); updateControls(); return true;
+    },
     open() { keyboard.open(); resizeInput(); updateControls(); void checkConnection(); },
     close() { closePhotoPreview?.(); closePhotoPreview = null; keyboard.close(); },
     resetUser() {
