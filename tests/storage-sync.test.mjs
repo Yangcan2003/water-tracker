@@ -128,6 +128,42 @@ test("legacy signed-in cache is migrated only to the matching account and remain
   assert.ok(local.get(accountCacheKey("A")));
 });
 
+test("expired login and later account hints cannot reassign the immutable legacy owner", () => {
+  for (const hint of [null, { uid: "B", email: "b@example.invalid" }]) {
+    local.clear();
+    const legacy = storage._emptyData(), date = "2026-10-20";
+    legacy.profile.dailyGoal = 3100;
+    legacy.records[date] = { water: [], medicine: [], supplement: [], toilet: [], meal: [{ id: "private-A", name: "A meal", recordedAt: `${date}T12:00:00`, logDate: date }] };
+    const original = JSON.stringify(legacy);
+    localStorage.setItem("health_tracker_data", original);
+    localStorage.setItem("watertracker:lastUser", JSON.stringify({ email: "A@example.invalid" }));
+    storage.setUser(null, null);
+    if (hint) localStorage.setItem("watertracker:lastUser", JSON.stringify(hint));
+    else localStorage.removeItem("watertracker:lastUser");
+    storage.setUser({ uid: "B", email: "b@example.invalid" }, {});
+    assert.equal(storage.getCachedDay(date).meal.length, 0);
+    storage.setUser(null, null);
+    assert.equal(storage.getCachedDay(date).meal.length, 0);
+    storage.setUser({ uid: "A", email: "a@example.invalid" }, {});
+    assert.equal(storage.getCachedDay(date).meal[0].id, "private-A");
+    assert.equal(storage.getCachedProfile().dailyGoal, 3100);
+    assert.equal(local.get("health_tracker_data"), original);
+  }
+});
+
+test("guest legacy data retains its guest ownership until a first login claims it once", () => {
+  local.clear();
+  const legacy = storage._emptyData(); legacy.profile.dailyGoal = 2600;
+  legacy.pendingUpload.profile = true;
+  localStorage.setItem("health_tracker_data", JSON.stringify(legacy));
+  storage.setUser(null, null);
+  assert.equal(storage.getCachedProfile().dailyGoal, 2600);
+  storage.setUser({ uid: "first" }, {});
+  assert.equal(storage.getCachedProfile().dailyGoal, 2600);
+  storage.setUser({ uid: "second" }, {});
+  assert.equal(storage.getCachedProfile().dailyGoal, 2000);
+});
+
 test("storage exhaustion preserves unsynced old records and rejects profile and cup changes", async () => {
   storage.setUser(null, null);
   const date = "2020-01-01";
@@ -155,6 +191,73 @@ test("complete export includes cloud-only dates, images and current account data
   await assert.rejects(storage.createBackup());
   mock.denied.clear(); navigator.onLine = false;
   await assert.rejects(storage.createBackup(), /联网/);
+});
+
+test("server meal deletion clears acknowledged cache and history and permits the first full backup", async () => {
+  const date = "2026-10-20";
+  mock.documents.set("users/test/mealLogs/deleted", { name: "remote meal", mealType: "meal", photos: ["data:image/jpeg;base64,YQ=="], logDate: date, recordedAt: new Date(`${date}T12:00:00`) });
+  await storage.getMealLogs(date);
+  assert.equal(storage.getCachedDay(date).meal.length, 1);
+  mock.documents.delete("users/test/mealLogs/deleted");
+  assert.equal((await storage.getHistory([date]))[0].mealRecs.length, 0);
+  assert.deepEqual(await storage.getHistoryRange({ startDate: date, endDate: date }, { force: true }), []);
+  assert.equal(storage.getCachedDay(date).meal.length, 0);
+  assert.equal((await storage.createBackup()).data.records[date].meal.length, 0);
+  navigator.onLine = false;
+  assert.deepEqual(await storage.getHistoryRange({ startDate: date, endDate: date }), []);
+  assert.equal((await storage.getCachedMealLogs(date)).length, 0);
+});
+
+test("complete history preserves guest uploads and blocked meal creates, edits and deletes", async () => {
+  const date = "2026-10-20", range = { startDate: date, endDate: date };
+  storage.setUser(null, null);
+  const guest = await storage.saveMealRecord({ name: "guest meal", photos: [], logDate: date, recordedAt: new Date(`${date}T12:00:00`) });
+  storage.setUser({ uid: "test" }, {});
+  assert.equal((await storage.getHistoryRange(range, { force: true }))[0].mealRecs[0].id, guest.id);
+  await storage.mergeLocalToCloud();
+  let release;
+  mock.writeGate = new Promise(resolve => { release = resolve; });
+  try {
+    await storage.saveMealRecord({ ...guest, name: "edited while offline", recordedAt: new Date(`${date}T12:30:00`) }, guest.id);
+    const added = await storage.saveMealRecord({ name: "new unsent meal", photos: [], logDate: date, recordedAt: new Date(`${date}T18:00:00`) });
+    let meals = (await storage.getHistoryRange(range, { force: true }))[0].mealRecs;
+    assert.deepEqual(meals.map(row => row.name).sort(), ["edited while offline", "new unsent meal"]);
+    await storage.deleteLog("meal", added.id);
+    meals = (await storage.getHistoryRange(range, { force: true }))[0].mealRecs;
+    assert.equal(meals.length, 1); assert.equal(meals[0].id, guest.id);
+  } finally { mock.writeGate = null; release(); await settleBodySync(); }
+});
+
+test("an old account's completed history read cannot prune the next account's meal cache", async () => {
+  const date = "2026-10-20", range = { startDate: date, endDate: date };
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  mock.readGate = ref => ref.path === "users/test/mealLogs" ? gate : null;
+  const reading = storage.getHistoryRange(range, { force: true });
+  storage.setUser({ uid: "B" }, {});
+  mock.documents.set("users/B/mealLogs/B-meal", { name: "B meal", mealType: "meal", photos: [], logDate: date, recordedAt: new Date(`${date}T12:00:00`) });
+  await storage.getMealLogs(date);
+  release(); await reading;
+  assert.equal(storage.getCachedDay(date).meal[0].id, "B-meal");
+});
+
+test("slash-bearing legacy plan IDs survive export, restore and rename with their dose links intact", async () => {
+  const date = "2026-10-20";
+  await storage.updateProfile({ medicines: [{ name: "维C/锌", dosage: "1片", targetCount: 2, schedule: "everyday" }] });
+  const row = await storage.addLog("medicine", { name: "维C/锌", count: 1, logDate: date, recordedAt: new Date(`${date}T12:00:00`) });
+  await settleBodySync();
+  const backup = parseBackup(await storage.createBackup());
+  assert.equal(backup.data.profile.medicines[0].id, row.planId);
+  assert.equal(backup.data.records[date].medicine[0].planId, "legacy:medicine:维C/锌");
+  storage.setUser({ uid: "B" }, {});
+  assert.equal((await storage.previewBackupImport(backup)).added, 1);
+  await storage.restoreBackup(backup, { restoreSettings: true });
+  await storage.mergeLocalToCloud();
+  const restored = (await storage.getLogs("medicine", date))[0], plan = storage.getCachedProfile().medicines[0];
+  assert.equal(restored.planId, plan.id);
+  assert.equal(restored.planId, "legacy:medicine:维C/锌");
+  await storage.saveItems("medicine", [{ ...plan, name: "改名后" }]);
+  assert.equal(storage.getCachedProfile().medicines[0].id, restored.planId);
 });
 
 test("backup restore previews duplicates and conflicts, preserves current records and is idempotent with photos", async () => {
@@ -1007,6 +1110,22 @@ test("a stalled photo read releases the batch lock without sending expired data 
   assert.equal(storage.syncStatus.state, "synced");
   assert.equal(storage.hasLocalData(), false);
   assert.equal(mock.documents.size, 1);
+});
+
+test("an aborted batch never sends a photo result even before its wall-clock deadline", async () => {
+  storage.setUser(null, null);
+  await storage.saveMealRecord({ mealType: "lunch", name: "午餐", logDate: "2026-10-12" });
+  storage.setUser({ uid: "test" }, {});
+  const controller = new AbortController(), readPhotos = storage.readMealPhotos;
+  storage.readMealPhotos = async () => { controller.abort(); return []; };
+  try {
+    await storage._mergeLocalToCloud(Date.now() + 60000, controller.signal);
+    assert.equal(mock.writes.length, 0);
+    assert.equal(storage._loadLocal().pendingUpload["2026-10-12/meal"], true);
+  } finally { storage.readMealPhotos = readPhotos; }
+  await storage.mergeLocalToCloud();
+  assert.equal(mock.documents.size, 1);
+  assert.equal(storage.hasLocalData(), false);
 });
 
 test("existing failures remain visible while unrelated requests are running", async () => {

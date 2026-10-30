@@ -5,7 +5,7 @@ import { normalizeNutritionGoal } from "./nutrition-goals.js";
 import { normalizeFoodCatalog } from "./food-catalog.js";
 import { normalizeFridgeInventory } from "./fridge.js";
 import { validateMeasurement } from "./body-measurements.js";
-import { normalizePlans, SCHEDULE_LABELS } from "./supplement-plan.js";
+import { normalizePlans, SCHEDULE_LABELS, validPlanID } from "./supplement-plan.js";
 import { validWaterAmount } from "./water-values.js";
 
 export const BACKUP_TYPES = ["water", "medicine", "supplement", "toilet", "meal"];
@@ -38,7 +38,7 @@ function record(type, row, date) {
   if (["medicine", "supplement"].includes(type)) {
     Object.assign(result, { name: text(row.name, 150), dosage: text(row.dosage || "", 150), count: number(row.count ?? (row.taken ? 1 : 0), 0, 1000) });
     if (row.targetCount != null) result.targetCount = number(row.targetCount, 1, 1000);
-    if (row.planId != null) { if (!safeID(row.planId)) fail(); result.planId = row.planId; }
+    if (row.planId != null) { if (!validPlanID(row.planId)) fail(); result.planId = row.planId; }
   }
   if (type === "meal") {
     const photos = row.photos || [];
@@ -101,7 +101,7 @@ export function parseBackup(input) {
       if (!object(plan)) fail();
       const item = { name: text(plan.name, 100), dosage: text(plan.dosage || "", 150), targetCount: number(plan.targetCount ?? 1, 1, 1000), schedule: plan.schedule || "everyday", enabled: plan.enabled !== false };
       if (!item.name.trim() || !Object.hasOwn(SCHEDULE_LABELS, item.schedule)) fail();
-      if (plan.id) { if (!safeID(plan.id)) fail(); item.id = plan.id; }
+      if (plan.id) { if (!validPlanID(plan.id)) fail(); item.id = plan.id; }
       if (plan.legacyNames) { if (!Array.isArray(plan.legacyNames)) fail(); item.legacyNames = plan.legacyNames.map(name => text(name, 100)); }
       return item;
     }), type);

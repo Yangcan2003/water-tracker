@@ -1082,7 +1082,7 @@ class StorageManager {
           getDocs(query(collection(this.db, "users", this.currentUser.uid, "medicineLogs"), where("logDate", "==", dk))),
           getDocs(query(collection(this.db, "users", this.currentUser.uid, "supplementLogs"), where("logDate", "==", dk))),
           getDocs(query(collection(this.db, "users", this.currentUser.uid, "toiletLogs"), where("logDate", "==", dk))),
-          getDocs(query(collection(this.db, "users", this.currentUser.uid, "mealLogs"), where("logDate", "==", dk))).catch(() => ({ docs: [] })),
+          getDocs(query(collection(this.db, "users", this.currentUser.uid, "mealLogs"), where("logDate", "==", dk))).catch(() => ({ docs: [], metadata: { fromCache: true } })),
           getDoc(doc(this.db, "users", this.currentUser.uid, "workoutLogs", dk)),
         ]);
         const results = await Promise.all(allQueries);
@@ -1105,9 +1105,11 @@ class StorageManager {
             medRecs: rows("medicine", medSnap).map(record => ({ ...record, count: record.count ?? (record.taken ? 1 : 0) })),
             suppRecs: rows("supplement", suppSnap).map(record => ({ ...record, count: record.count ?? (record.taken ? 1 : 0) })),
             toiletRecs: rows("toilet", toiletSnap),
-            mealRecs: this._overlayRecordChanges("meal", dk, mealSnap.docs.length
-              ? mealSnap.docs.map(d => ({ ...d.data(), id: d.id, photos: undefined }))
-              : (localData.records[dk]?.meal || []).map(record => ({ ...record, recordedAt: new Date(record.recordedAt) }))),
+            mealRecs: this._overlayRecordChanges("meal", dk, [
+              ...mealSnap.docs.map(d => ({ ...d.data(), id: d.id, photos: undefined })),
+              ...(localData.records[dk]?.meal || []).filter(record => record.mealPending || mealSnap.metadata?.fromCache)
+                .map(record => ({ ...record, recordedAt: new Date(record.recordedAt) })),
+            ]),
             isWorkout: workoutPending ? localData.workoutDays[dk] === true : workoutSnap.exists() && workoutSnap.data().isWorkout === true,
             workoutDetail: workoutPending ? localData.workoutDetails[dk] || {} : workoutSnap.exists() ? workoutSnap.data() : {},
           };
@@ -1219,6 +1221,7 @@ class StorageManager {
 
   async _fetchAllHistory(range = null) {
     if (this.isCloud) {
+      const generation = this.sync.generation, revision = this.historyRevision;
       try {
         const uid = this.currentUser.uid;
         const readCollection = name => {
@@ -1287,18 +1290,30 @@ class StorageManager {
           }
         });
 
-        // 新功能先写入本地缓存；即使线上规则尚未更新，历史页也不会丢失这些记录。
+        // A complete server result is authoritative for acknowledged meals.
+        // Only durable unsent work (or an incomplete cache read) may overlay it.
         const localData = this._loadLocal();
+        const pendingMeals = new Set(this._pendingRecordChanges().filter(change => change.type === "meal" && !change.deleted).map(change => change.id));
+        const remoteMealIDs = new Set(mealSnap.docs.map(snapshot => snapshot.id));
+        let cacheChanged = false;
         Object.entries(localData.records || {}).forEach(([dateKey, records]) => {
           if (!inHistoryRange(dateKey, range)) return;
-          for (const record of (records.meal || [])) {
+          const preserveLocal = record => mealSnap.metadata?.fromCache || localData.pendingUpload?.[`${dateKey}/meal`] || record.mealPending || pendingMeals.has(record.id);
+          for (const record of (records.meal || []).filter(preserveLocal)) {
             const day = ensureDay(dateKey);
             const index = day.mealRecs.findIndex(item => item.id === record.id || (item.mealType === record.mealType && item.name === record.name && new Date(item.recordedAt?.toDate?.() ?? item.recordedAt).getTime() === new Date(record.recordedAt).getTime()));
             const local = { ...record, photos: undefined, recordedAt: new Date(record.recordedAt) };
             if (index < 0) day.mealRecs.push(local);
             else if (record.mealPending) day.mealRecs[index] = local;
           }
+          if (generation === this.sync.generation && revision === this.historyRevision && !mealSnap.metadata?.fromCache) {
+            const kept = (records.meal || []).filter(record => remoteMealIDs.has(record.id) || preserveLocal(record));
+            if (kept.length !== (records.meal || []).length) { records.meal = kept; cacheChanged = true; }
+          }
         });
+        // Do not invalidate the range being assembled; its server result already
+        // reflects these deletions. Never prune after a local write/account switch.
+        if (cacheChanged && this._saveLocal(localData)) window.dispatchEvent(new Event("meal-cache-change"));
 
         // A server read may finish before a background upload. Overlay durable
         // local intents, including tombstones, rather than hiding the latest tap.
@@ -1379,8 +1394,8 @@ class StorageManager {
         timeoutMs: this.syncBatchTimeoutMs, recoverOnLateSuccess: false, retry: false, operation: async ({ signal }) => {
           const deadline = Date.now() + this.syncBatchTimeoutMs;
           await Promise.allSettled([...this._pendingRecordChanges().map(change => this._syncRecordChange(change)), this._syncFridge(), this._syncBodyMeasurements()]);
-          if (signal.aborted || !this._canContinueSyncBatch(generation, deadline)) return;
-          await this._mergeLocalToCloud(deadline);
+          if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
+          await this._mergeLocalToCloud(deadline, signal);
         } });
     } catch { /* Keep upload intents and expose the request failure for retry. */
     } finally {
@@ -1392,13 +1407,13 @@ class StorageManager {
     }
   }
 
-  _canContinueSyncBatch(generation, deadline) {
-    return generation === this.sync.generation && navigator.onLine && Date.now() < deadline
+  _canContinueSyncBatch(generation, deadline, signal) {
+    return !signal?.aborted && generation === this.sync.generation && navigator.onLine && Date.now() < deadline
       && ![...this.sync.failures.values()].some(({ request, error }) => !request.key.startsWith("merge:")
         && /(?:deadline-exceeded|unavailable|unauthenticated)$/.test(error?.code || ""));
   }
 
-  async _mergeLocalToCloud(deadline = Date.now() + 20_000) {
+  async _mergeLocalToCloud(deadline = Date.now() + 20_000, signal = null) {
     const data = this._loadLocal();
     const cloudDb = this.db, uid = this.currentUser.uid;
     const generation = this.sync.generation;
@@ -1429,7 +1444,7 @@ class StorageManager {
 
     // 上传 workout days
     for (const [dk, val] of Object.entries(data.workoutDays || {})) {
-      if (!this._canContinueSyncBatch(generation, deadline)) return;
+      if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
       if (pending && !pending[`workout:${dk}`]) continue;
       if (val || data.workoutDetails?.[dk]?.activity === "休息日") {
         try {
@@ -1449,12 +1464,12 @@ class StorageManager {
     // 上传记录（逐天逐类型）
     const RECORD_TYPES = ["water", "medicine", "supplement", "toilet", "meal"];
     for (const [dk, day] of Object.entries(data.records || {})) {
-      if (!this._canContinueSyncBatch(generation, deadline)) return;
+      if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
       if (pending && !RECORD_TYPES.some(t => pending[`${dk}/${t}`])) continue;
       // 获取云端已有记录用于去重
       const cloudRecs = {};
       for (const type of RECORD_TYPES) {
-        if (!this._canContinueSyncBatch(generation, deadline)) return;
+        if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
         if (pending && !pending[`${dk}/${type}`]) continue;
         if (!day[type]?.length) continue;
         const collName = type === "water" ? "waterLogs" : type === "toilet" ? "toiletLogs" : type === "medicine" ? "medicineLogs" : type === "meal" ? "mealLogs" : "supplementLogs";
@@ -1466,7 +1481,7 @@ class StorageManager {
 
       // 上传 water
       for (const rec of (cloudRecs.water ? day.water || [] : [])) {
-        if (!this._canContinueSyncBatch(generation, deadline)) return;
+        if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
         const dup = cloudRecs.water.some(cr =>
           cr.source === rec.source && cr.amount === rec.amount &&
           Math.abs(new Date(cr.recordedAt?.toDate?.() ?? 0) - new Date(rec.recordedAt)) < 60000
@@ -1483,7 +1498,7 @@ class StorageManager {
 
       // 上传 medicine
       for (const rec of (cloudRecs.medicine ? day.medicine || [] : [])) {
-        if (!this._canContinueSyncBatch(generation, deadline)) return;
+        if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
         const dup = cloudRecs.medicine.some(cr =>
           cr.name === rec.name && Math.abs(new Date(cr.recordedAt?.toDate?.() ?? 0) - new Date(rec.recordedAt)) < 60000
         );
@@ -1500,7 +1515,7 @@ class StorageManager {
 
       // 上传 supplement
       for (const rec of (cloudRecs.supplement ? day.supplement || [] : [])) {
-        if (!this._canContinueSyncBatch(generation, deadline)) return;
+        if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
         const dup = cloudRecs.supplement.some(cr =>
           cr.name === rec.name && Math.abs(new Date(cr.recordedAt?.toDate?.() ?? 0) - new Date(rec.recordedAt)) < 60000
         );
@@ -1517,7 +1532,7 @@ class StorageManager {
 
       // 上传 toilet
       for (const rec of (cloudRecs.toilet ? day.toilet || [] : [])) {
-        if (!this._canContinueSyncBatch(generation, deadline)) return;
+        if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
         const dup = cloudRecs.toilet.some(cr =>
           cr.type === rec.type && Math.abs(new Date(cr.recordedAt?.toDate?.() ?? 0) - new Date(rec.recordedAt)) < 60000
         );
@@ -1532,7 +1547,7 @@ class StorageManager {
 
       // 上传 meals
       for (const rec of (cloudRecs.meal ? day.meal || [] : [])) {
-        if (!this._canContinueSyncBatch(generation, deadline)) return;
+        if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
         const dup = cloudRecs.meal.some(cr => cr.id === rec.id || (
           cr.mealType === rec.mealType && cr.name === rec.name &&
           Math.abs(new Date(cr.recordedAt?.toDate?.() ?? 0) - new Date(rec.recordedAt)) < 60000
@@ -1540,7 +1555,7 @@ class StorageManager {
         if (!dup || rec.mealPending) {
           try {
             const photos = await this.readMealPhotos(rec);
-            if (!this._canContinueSyncBatch(generation, deadline)) return;
+            if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
             await setDoc(doc(cloudDb, "users", uid, "mealLogs", rec.id), {
               mealType: rec.mealType, name: rec.name || "", note: rec.note || "",
               photos, nutrition: normalizeMealNutrition(rec.nutrition),
@@ -1561,7 +1576,7 @@ class StorageManager {
     }
 
     // 标记已同步
-    if (!this._canContinueSyncBatch(generation, deadline)) return;
+    if (!this._canContinueSyncBatch(generation, deadline, signal)) return;
     if (!hasFailures()) {
       // Reload here: the user may have added records while the upload was running.
       const latest = this._loadLocal();

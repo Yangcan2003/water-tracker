@@ -10,16 +10,24 @@ const save = (persistence, key, value) => {
   catch { throw new Error("设备存储空间不足，账户数据未切换，请释放空间后重试"); }
 };
 
-// The old shared cache is retained as a recovery copy. Only the last signed-in
-// identity may claim it; restoring an unrelated identity never exposes it.
+// Keep legacy ownership separate from the mutable current-login hint. A failed
+// login or sign-out must not turn a signed-in user's recovery copy into guest data.
 export function prepareAccountCache(persistence, user, emptyData) {
   const migratedKey = `${LS_KEY}:scoped-migration`;
   if (!persistence.getItem(migratedKey)) {
     const legacy = parse(persistence, LS_KEY);
-    const owner = parse(persistence, "watertracker:lastUser");
-    const ownsLegacy = owner?.uid ? owner.uid === user?.uid
-      : owner?.email ? owner.email.toLowerCase() === user?.email?.toLowerCase() : false;
-    if (legacy?.profile && legacy?.records && (ownsLegacy || !owner?.uid && !owner?.email)) {
+    const ownerKey = `${LS_KEY}:legacy-owner`;
+    let owner = parse(persistence, ownerKey);
+    if (legacy?.profile && legacy?.records && !persistence.getItem(ownerKey)) {
+      const lastUser = parse(persistence, "watertracker:lastUser");
+      const uid = typeof lastUser?.uid === "string" && lastUser.uid ? lastUser.uid : null;
+      const email = typeof lastUser?.email === "string" && lastUser.email ? lastUser.email.toLowerCase() : null;
+      owner = { uid, email, guest: !uid && !email };
+      save(persistence, ownerKey, owner);
+    }
+    const ownsLegacy = !!user?.uid && (owner?.uid ? owner.uid === user.uid
+      : typeof owner?.email === "string" && owner.email === user.email?.toLowerCase());
+    if (legacy?.profile && legacy?.records && (ownsLegacy || owner?.guest === true)) {
       const key = accountCacheKey(ownsLegacy ? user.uid : null);
       if (!persistence.getItem(key)) save(persistence, key, legacy);
       save(persistence, migratedKey, { owner: ownsLegacy ? user.uid : "__local__" });

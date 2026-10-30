@@ -30,7 +30,7 @@ import { createWaterDialog } from "./js/water-dialog.js";
 import { createEdgeSwipeBack } from "./js/edge-swipe-back.js";
 import { chatGPTPlan } from "./js/chatgpt-plan-client.js";
 import { intakeSummary, intakeCard, intakeIcon } from "./js/intake-ui.js";
-import { enabledPlans, enabledSupplements, SCHEDULE_LABELS, normalizePlans, planMatchesRecord } from "./js/supplement-plan.js";
+import { enabledPlans, enabledSupplements, SCHEDULE_LABELS, normalizePlans, planMatchesRecord, planRecordCount } from "./js/supplement-plan.js";
 import { generateLocalId } from "./js/utils.js";
 import { validWaterAmount } from "./js/water-values.js";
 import { createBackupPage } from "./js/backup-page.js";
@@ -1506,7 +1506,7 @@ function getFullList(type) {
 }
 function getCount(type, name) {
   const item = getFullList(type).find(item => item.name === name);
-  return item ? getCfg(type).recs.filter(record => planMatchesRecord(item, record)).reduce((sum, record) => sum + (record.count || 0), 0) : 0;
+  return item ? planRecordCount(item, getCfg(type).recs) : 0;
 }
 
 async function adjustIntake(type, name, delta) {
@@ -1818,6 +1818,13 @@ async function retryCloudSync() {
 }
 E.accountSyncRetry?.addEventListener("click", retryCloudSync);
 window.addEventListener("storage-sync-change", renderSyncStatus);
+window.addEventListener("meal-cache-change", () => {
+  const date = selectedDate, generation = storage.sync.generation, revision = storage.dayRevisions.get(date), version = requestVersion;
+  void storage.getCachedMealLogs(date).then(rows => {
+    if (generation !== storage.sync.generation || date !== selectedDate || revision !== storage.dayRevisions.get(date) || version !== requestVersion) return;
+    mealRecords = rows; renderMeals(); updateDailyOverview();
+  }).catch(() => {});
+});
 window.addEventListener("online", () => {
   renderSyncStatus();
   if (storage.isCloud) void retryCloudSync();
@@ -2377,13 +2384,13 @@ async function renderStatsChart(period) {
   const medRates = dayData.map(d => {
     const items = getFullList("medicine").filter(s => isItemActiveOnDay(s.schedule || "everyday", isWeekday(d.dateKey), d.isWorkout));
     if (items.length === 0) return 100;
-    const done = items.filter(s => (d.medRecs.find(r => planMatchesRecord(s, r))?.count || 0) >= (s.targetCount || 1)).length;
+    const done = items.filter(s => planRecordCount(s, d.medRecs) >= (s.targetCount || 1)).length;
     return Math.round((done / items.length) * 100);
   });
   const suppRates = dayData.map(d => {
     const items = getFullList("supplement").filter(s => isItemActiveOnDay(s.schedule || "everyday", isWeekday(d.dateKey), d.isWorkout));
     if (items.length === 0) return 100;
-    const done = items.filter(s => (d.suppRecs.find(r => planMatchesRecord(s, r))?.count || 0) >= (s.targetCount || 1)).length;
+    const done = items.filter(s => planRecordCount(s, d.suppRecs) >= (s.targetCount || 1)).length;
     return Math.round((done / items.length) * 100);
   });
 
