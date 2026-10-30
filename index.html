@@ -53,6 +53,13 @@
         <button class="account-avatar" id="accountAvatarButton" type="button" aria-label="更换头像" title="更换头像"><span id="accountAvatar"></span></button>
       </header>
 
+      <div class="record-date-bar" id="recordDateBar" hidden>
+        <button id="recordPreviousDay" type="button" aria-label="前一天">‹</button>
+        <label><span id="recordDateLabel">记录日期</span><input id="recordDateInput" type="date" required aria-label="记录日期" /></label>
+        <button id="recordNextDay" type="button" aria-label="后一天">›</button>
+        <button id="recordToday" type="button">今天</button>
+      </div>
+
       <!-- ========== 主栏目：首页概览 ========== -->
       <div class="main-panel" id="dashboardPanel">
         <section class="dashboard-section">
@@ -78,6 +85,7 @@
                   <span><small>脂肪</small><span><strong id="dashboardMealFat">—</strong><small>g</small></span></span>
                 </span>
               </span>
+              <span class="home-nutrition-remaining" id="dashboardNutritionRemaining"></span>
             </button>
             <button class="home-card summary-card summary-workout" type="button" data-detail="workout">
               <span class="summary-symbol workout-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12h8M6 6v12M3 9v6M18 6v12M21 9v6M3 12h3m12 0h3"/></svg></span>
@@ -124,7 +132,7 @@
         </section>
         <section class="progress-card">
           <div class="progress-copy">
-            <span class="progress-label">今日饮水</span>
+            <span class="progress-label">当日饮水</span>
             <div class="amount-line">
               <strong id="currentAmount">0</strong>
               <span>ml</span>
@@ -237,7 +245,7 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">TIMELINE</p>
-              <h2>今日饮水</h2>
+              <h2>当日饮水</h2>
             </div>
             <span class="record-count" id="recordCount">0 条</span>
           </div>
@@ -286,7 +294,7 @@
         <button id="mealFridgeButton" class="meal-fridge-entry" type="button"><span class="fridge-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M5 10h14M8 5v2m0 6v3"/></svg></span><span><strong>我的冰箱</strong><small id="mealFridgeSummary">记下家里的食材，让 AI 帮你安排下一餐</small></span><span class="fridge-entry-chevron" aria-hidden="true">›</span></button>
         <div class="diary-quick-actions"><button id="mealQuickCamera" class="diary-camera-action" type="button"><span data-meal-icon="camera"></span><span><strong>拍照记录</strong><small>拍照或选择食物图片</small></span></button><button id="mealQuickText" class="diary-text-action" type="button"><span data-meal-icon="pen"></span><span><strong>文字记录</strong><small>简单写下吃了什么</small></span></button></div>
         <section id="mealDailyNutrition" class="diary-daily-nutrition" aria-labelledby="mealDailyHeading"><div class="diary-daily-heading"><h2 id="mealDailyHeading">当日总摄入</h2><span id="mealDailyCoverage">尚无记录</span></div><div class="diary-daily-energy"><strong id="mealDailyKcal">—</strong><span>kcal</span><small>总热量估算</small></div><button id="mealGoalButton" class="diary-goal-link" type="button"><span id="mealGoalContext">按体重设置每日营养目标</span><span>设置 ›</span></button><dl class="diary-daily-macros"><div><dt>碳水</dt><dd><strong id="mealDailyCarbs">—</strong><span> g</span></dd><dd id="mealTargetCarbsLine" class="diary-macro-target" hidden>目标 <span id="mealTargetCarbs">—</span> g</dd><dd class="diary-macro-progress" id="mealCarbsProgress" role="progressbar" aria-label="碳水摄入进度" aria-valuemin="0" aria-valuemax="100" hidden><span></span></dd><dd class="diary-macro-remaining" id="mealCarbsRemaining" hidden></dd></div><div><dt>蛋白质</dt><dd><strong id="mealDailyProtein">—</strong><span> g</span></dd><dd id="mealTargetProteinLine" class="diary-macro-target" hidden>目标 <span id="mealTargetProtein">—</span> g</dd><dd class="diary-macro-progress" id="mealProteinProgress" role="progressbar" aria-label="蛋白质摄入进度" aria-valuemin="0" aria-valuemax="100" hidden><span></span></dd><dd class="diary-macro-remaining" id="mealProteinRemaining" hidden></dd></div><div><dt>脂肪</dt><dd><strong id="mealDailyFat">—</strong><span> g</span></dd><dd id="mealTargetFatLine" class="diary-macro-target" hidden>目标 <span id="mealTargetFat">—</span> g</dd><dd class="diary-macro-progress" id="mealFatProgress" role="progressbar" aria-label="脂肪摄入进度" aria-valuemin="0" aria-valuemax="100" hidden><span></span></dd><dd class="diary-macro-remaining" id="mealFatRemaining" hidden></dd></div></dl><div class="diary-daily-guidance" aria-label="膳食纤维目标与钠上限"><section class="diary-nutrient-goal" id="mealFiberGoal"><div class="diary-nutrient-heading"><h3>膳食纤维</h3><span>目标</span></div><p class="diary-nutrient-intake"><strong id="mealDailyFiber">—</strong><small> g</small></p><p class="diary-nutrient-target">每日目标 <span id="mealTargetFiber">25</span> g</p><div class="diary-nutrient-progress" id="mealFiberProgress" role="progressbar" aria-label="膳食纤维进度" aria-valuemin="0" aria-valuemax="100"><span></span></div><p class="diary-nutrient-status" id="mealFiberRemaining">待补充营养数据</p><small class="diary-nutrient-coverage" id="mealFiberCoverage">尚无饮食记录</small></section><section class="diary-nutrient-goal" id="mealSodiumGoal"><div class="diary-nutrient-heading"><h3>钠</h3><span>上限</span></div><p class="diary-nutrient-intake"><strong id="mealDailySodium">—</strong><small> mg</small></p><p class="diary-nutrient-target">每日上限 <span id="mealTargetSodium">2000</span> mg</p><div class="diary-nutrient-progress" id="mealSodiumProgress" role="progressbar" aria-label="钠进度" aria-valuemin="0" aria-valuemax="100"><span></span></div><p class="diary-nutrient-status" id="mealSodiumRemaining">待补充营养数据</p><small class="diary-nutrient-coverage" id="mealSodiumCoverage">尚无饮食记录</small></section></div><details class="nutrition-more" id="mealDailyMore" hidden><summary>更多营养</summary><dl id="mealDailyExtra" class="nutrition-extra-values"></dl><p>仅合计已知数值；计入条数不代表当天已完整记录。</p></details><p id="mealDailyNote" role="status">添加饮食并识别营养后，显示当天的摄入合计。</p></section>
-        <section class="diary-records-section" aria-label="当天饮食记录"><div class="diary-section-heading"><h2>今日记录</h2><span id="mealListCount">0 条记录</span></div><p id="mealDayStatus" class="diary-day-status" role="status" hidden>正在读取饮食记录…</p><div id="mealDayList" class="diary-today-list"></div>
+        <section class="diary-records-section" aria-label="当天饮食记录"><div class="diary-section-heading"><h2>当日记录</h2><span id="mealListCount">0 条记录</span></div><p id="mealDayStatus" class="diary-day-status" role="status" hidden>正在读取饮食记录…</p><div id="mealDayList" class="diary-today-list"></div>
           <div id="mealEmptyState" class="diary-empty-state"><span class="diary-empty-icon" data-meal-icon="plate"></span><h3>留下这一餐</h3><p>一天吃几餐都可以。<br />拍张照片，或简单写下吃了什么。</p><button id="mealQuickAdd" type="button"><span data-meal-icon="plus"></span>记录这一餐</button></div>
         </section>
         <p class="diary-footer-note"><span data-meal-icon="clock"></span>默认使用记录时间，之后也能随时修改</p>
@@ -295,10 +303,11 @@
       <!-- ========== 训练日记 ========== -->
       <div class="tab-panel workout-page" id="workoutPanel" hidden>
         <header class="workout-page-heading">
-          <div><p class="workout-page-date" id="workoutDateLabel"></p><h2>今天的安排</h2></div>
+          <div><p class="workout-page-date" id="workoutDateLabel"></p><h2>当天的安排</h2></div>
           <span class="workout-current-status" id="workoutCurrentStatus" role="status">未标记</span>
         </header>
-        <div class="workout-choice-grid" role="group" aria-label="今日训练安排">
+        <button class="text-button" id="workoutClear" type="button" hidden>清除当日标记</button>
+        <div class="workout-choice-grid" role="group" aria-label="当日训练安排">
           <button class="workout-choice" type="button" data-workout-preset="练肩日" aria-pressed="false">
             <span class="workout-choice-top" aria-hidden="true"><span>01</span><span class="workout-choice-check"><svg viewBox="0 0 20 20"><path d="m5 10 3.3 3.3L15 6.5"/></svg></span></span>
             <span class="workout-choice-illustration" aria-hidden="true"><svg viewBox="0 0 64 64"><g class="workout-body-outline"><path d="M26 8v7l-12 5c-4 2-6 7-6 12v11m30-35v7l12 5c4 2 6 7 6 12v11M19 30l3 13v13m23-26-3 13v13M26 15l6 4 6-4"/></g><path class="workout-body-target" d="m25 17-11 5c-3 2-4 5-4 9l10 1c1-6 3-10 5-15Zm14 0 11 5c3 2 4 5 4 9l-10 1c-1-6-3-10-5-15Z"/><path class="workout-body-detail" d="M27 30h10M32 35v15"/></svg></span>
@@ -329,7 +338,7 @@
           <button type="button" data-intake-nav="supplement" aria-pressed="false">补剂</button>
         </nav>
         <section class="intake-hero" aria-label="药物服用进度">
-          <div class="intake-progress" id="medicineRing" role="progressbar" aria-label="今日药物服用进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="intake-progress-track" aria-hidden="true"><i></i></div><strong id="medicinePercent">0%</strong></div>
+          <div class="intake-progress" id="medicineRing" role="progressbar" aria-label="当日药物服用进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="intake-progress-track" aria-hidden="true"><i></i></div><strong id="medicinePercent">0%</strong></div>
         </section>
         <div class="intake-training" id="medicineWorkoutRow"><button class="workout-toggle" id="medicineWorkoutToggle" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7v10M4 9v6M17 7v10M20 9v6M7 12h10"/></svg><span class="workout-label">今天不是健身日</span><span class="workout-indicator"></span></button><span>训练日计划随之调整</span></div>
         <section class="intake-plan">
@@ -344,7 +353,7 @@
           <button type="button" data-intake-nav="supplement" aria-pressed="true">补剂</button>
         </nav>
         <section class="intake-hero" aria-label="补剂服用进度">
-          <div class="intake-progress" id="supplementRing" role="progressbar" aria-label="今日补剂服用进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="intake-progress-track" aria-hidden="true"><i></i></div><strong id="supplementPercent">0%</strong></div>
+          <div class="intake-progress" id="supplementRing" role="progressbar" aria-label="当日补剂服用进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="intake-progress-track" aria-hidden="true"><i></i></div><strong id="supplementPercent">0%</strong></div>
         </section>
         <section class="intake-plan">
           <div class="intake-list" id="supplementGrid" aria-live="polite"></div>
@@ -407,6 +416,8 @@
               <button id="accountSyncRetry" type="button" hidden>重试同步</button>
             </div>
             <button class="account-row" id="accountExportButton" type="button"><span class="account-row-icon account-icon-slate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 15v5h14v-5"/></svg></span><span class="account-row-copy"><strong>导出健康记录</strong><small>保存一份完整的数据备份</small></span><svg class="account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+            <button class="account-row" id="accountImportButton" type="button"><span class="account-row-icon account-icon-slate" aria-hidden="true">↥</span><span class="account-row-copy"><strong>恢复数据备份</strong><small>预览、去重并合并已有记录</small></span><svg class="account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+            <input id="backupFileInput" type="file" accept=".json,application/json" hidden />
           </div>
         </section>
         <p class="account-footer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>记录保存在本机 · 支持导出备份</p>
@@ -443,7 +454,7 @@
         <div class="profile-info">
           <span class="profile-email" id="profileEmail"></span>
         </div>
-        <p class="settings-help">退出登录不会删除本机记录。</p>
+        <p class="settings-help">退出后隐藏当前账户记录，重新登录同一账户可继续使用。</p>
 
         <div class="profile-actions">
           <button class="profile-action-btn profile-logout-btn" id="profileLogoutButton" type="button">
@@ -659,7 +670,7 @@
         <input class="text-field" id="customName" type="text" maxlength="30" value="其他饮水" required />
         <label for="customAmount">饮水量</label>
         <div class="number-field">
-          <input id="customAmount" type="number" min="1" max="5000" step="1" value="300" autofocus required />
+          <input id="customAmount" type="number" min="10" max="5000" step="1" value="300" autofocus required />
           <span>ml</span>
         </div>
         <button class="primary-button" value="default" type="submit">添加记录</button>
@@ -764,7 +775,7 @@
         <div class="cup-add-row">
           <input class="text-field" id="newCupName" type="text" maxlength="20" placeholder="水杯名称" />
           <div class="number-field">
-            <input id="newCupAmount" type="number" min="10" max="5000" step="10" value="300" />
+            <input id="newCupAmount" type="number" min="10" max="5000" step="1" value="300" required />
             <span>ml</span>
           </div>
           <button class="primary-button" id="addCupBtn" type="button" style="margin-top:0;padding:13px 18px">添加</button>
@@ -932,6 +943,28 @@
       </div>
     </div>
 
+    <dialog id="backupImportDialog" aria-labelledby="backupImportTitle">
+      <div class="dialog-heading"><h2 id="backupImportTitle">恢复数据备份</h2><button class="close-button" id="backupImportClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <p class="settings-help" id="backupImportTarget"></p>
+      <p id="backupImportSummary" class="backup-summary"></p>
+      <label class="backup-settings"><input id="backupRestoreSettings" type="checkbox" />同时恢复目标、药物补剂计划、常吃食物、水杯、头像及提醒偏好</label>
+      <p id="backupImportMessage" class="settings-help" role="status"></p>
+      <button id="backupImportConfirm" class="primary-button" type="button" disabled>合并恢复</button>
+    </dialog>
+    <dialog id="historyRecordEditor" aria-labelledby="historyRecordTitle">
+      <form id="historyRecordForm">
+        <div class="dialog-heading"><h2 id="historyRecordTitle">编辑记录</h2><button id="historyRecordClose" class="close-button" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <p id="historyRecordDate" class="settings-help"></p>
+        <label id="historyRecordTimeField">时间<input id="historyRecordTime" class="text-field" type="time" required /></label>
+        <label id="historyRecordNameField">名称<input id="historyRecordName" class="text-field" maxlength="150" /></label>
+        <label id="historyRecordAmountField">饮水量（ml）<input id="historyRecordAmount" class="text-field" type="number" min="10" max="5000" step="1" /></label>
+        <label id="historyRecordCountField">已服用次数<input id="historyRecordCount" class="text-field" type="number" min="0" max="1000" step="1" /></label>
+        <label id="historyRecordDosageField">剂量<input id="historyRecordDosage" class="text-field" maxlength="150" /></label>
+        <label id="historyRecordToiletField">如厕类型<select id="historyRecordToilet" class="text-field"><option value="small">小号</option><option value="big">大号</option></select></label>
+        <p id="historyRecordMessage" class="settings-help" role="alert"></p>
+        <div class="history-editor-actions"><button id="historyRecordDelete" class="text-button" type="button">删除记录</button><button id="historyRecordSave" class="primary-button" type="submit">保存修改</button></div>
+      </form>
+    </dialog>
     <script type="module" src="app.js"></script>
   </body>
 </html>

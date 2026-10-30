@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import { normalizePlans } from "../js/supplement-plan.js";
 
 const source = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const pending = () => new Promise(() => {});
@@ -59,6 +60,7 @@ function accountContext(section = "detail", userId) {
   const calls = [];
   const context = vm.createContext({
     appliedUserId: userId, requestVersion: 4, db: {}, currentUser: null,
+    normalizePlans, backupPage: { reset() {} }, document: { querySelectorAll: () => [] },
     selectedDate: "2026-09-21", section, scrollY: 350, historyMonth: "2026-09", historyCategory: "medicine",
     DEFAULT_MEDICINES: [], DEFAULT_SUPPLEMENTS: [],
     historyPage: { reset: () => calls.push("reset-history") },

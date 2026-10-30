@@ -11,6 +11,10 @@ import { mergeFridgeInventory, normalizeFridgeInventory, applyFridgeChange } fro
 import { MAX_MEAL_PHOTOS, isMealPhoto } from "./meals.js";
 import { inHistoryRange } from "./history-range.js";
 import { mergeMeasurements, validateMeasurement } from "./body-measurements.js";
+import { accountCacheKey, prepareAccountCache } from "./account-cache.js";
+import { validWaterAmount } from "./water-values.js";
+import { normalizePlans, planMatchesRecord } from "./supplement-plan.js";
+import { BACKUP_TYPES, HISTORY_FIELDS, recordISO, parseBackup, planBackupRestore } from "./data-backup.js";
 import {
   collection as firebaseCollection, deleteDoc as firebaseDeleteDoc, doc,
   getDoc as firebaseGetDoc, getDocs as firebaseGetDocs,
@@ -73,6 +77,7 @@ class StorageManager {
   }
 
   setUser(user, db) {
+    prepareAccountCache(localStorage, user, () => this._emptyData());
     this.historyCache = null;
     this.historyRequest = null;
     this.historyRanges.clear();
@@ -95,6 +100,7 @@ class StorageManager {
   }
 
   get isCloud() { return !!(this.currentUser && this.db); }
+  get localKey() { return accountCacheKey(this.currentUser?.uid); }
 
   get syncStatus() {
     const hasPendingWrites = this.isCloud && (this.hasLocalData()
@@ -135,7 +141,7 @@ class StorageManager {
   // ========== localStorage 读写 ==========
   _loadLocal() {
     try {
-      const raw = localStorage.getItem(LS_KEY);
+      const raw = localStorage.getItem(this.localKey);
       if (!raw) return this._emptyData();
       const data = JSON.parse(raw);
       // 基本结构校验
@@ -164,33 +170,12 @@ class StorageManager {
     if (historyChanged) this.invalidateHistory();
     try {
       const json = JSON.stringify(data);
-      localStorage.setItem(LS_KEY, json);
+      localStorage.setItem(this.localKey, json);
       return true;
     } catch (e) {
-      // quota 超限：尝试清理 90 天前的旧记录
-      console.warn("[Storage] 存储空间不足，尝试清理旧数据...");
-      const pruned = this._pruneOldRecords(data, 90);
-      try {
-        localStorage.setItem(LS_KEY, JSON.stringify(pruned));
-        return true;
-      } catch (e2) {
-        console.error("[Storage] 清理后仍无法保存，数据可能丢失", e2);
-        return false;
-      }
+      console.error("[Storage] 保存失败，原有记录已保留", e);
+      return false;
     }
-  }
-
-  _pruneOldRecords(data, daysToKeep) {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - daysToKeep);
-    const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
-    const newRecords = {};
-    for (const dk of Object.keys(data.records || {})) {
-      if (dk >= cutoffKey) newRecords[dk] = data.records[dk];
-    }
-    const removed = Object.keys(data.records || {}).length - Object.keys(newRecords).length;
-    if (removed > 0) console.warn(`[Storage] 已清理 ${removed} 天旧记录`);
-    return { ...data, records: newRecords, meta: { ...data.meta, prunedAt: new Date().toISOString() } };
   }
 
   _emptyData() {
@@ -266,7 +251,7 @@ class StorageManager {
       data.pendingUpload ||= {};
       data.pendingUpload[type === "workout" ? `workout:${dateKey}` : `${dateKey}/${type}`] = true;
     }
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+    try { localStorage.setItem(this.localKey, JSON.stringify(data)); }
     catch { throw new Error("设备存储空间不足，记录未保存，请释放空间后重试"); }
     this.dayRevisions.set(dateKey, (this.dayRevisions.get(dateKey) || 0) + 1);
     this.invalidateHistory();
@@ -315,7 +300,7 @@ class StorageManager {
         if (change.type === "water") Object.assign(payload, { source: record.source, amount: record.amount });
         else if (change.type === "toilet") payload.type = record.type;
         else if (change.type === "meal") Object.assign(payload, { mealType: record.mealType, name: record.name || "", note: record.note || "", nutrition: normalizeMealNutrition(record.nutrition), photos: await this.readMealPhotos(record) });
-        else if (change.type !== "workout") Object.assign(payload, { name: record.name, dosage: record.dosage || "", count: record.count ?? 1, ...(record.targetCount ? { targetCount: record.targetCount } : {}) });
+        else if (change.type !== "workout") Object.assign(payload, { name: record.name, dosage: record.dosage || "", count: record.count ?? 1, ...(record.planId ? { planId: record.planId } : {}), ...(record.targetCount ? { targetCount: record.targetCount } : {}) });
         if (generation !== this.sync.generation) return;
         if (signal.aborted) throw signal.reason;
         await firebaseSetDoc(target, payload, { merge: change.type !== "workout" });
@@ -486,14 +471,16 @@ class StorageManager {
     const generation = this.sync.generation;
     const data = this._loadLocal();
     Object.assign(data.profile, partial);
+    data.pendingUpload ||= {}; data.pendingUpload.profile = true;
     if (!this._saveLocal(data)) throw new Error("设备存储空间不足，设置未保存");
-    this.profileRevision++;
+    const revision = ++this.profileRevision;
 
     if (this.isCloud) {
       try {
         await setDoc(doc(this.db, "users", this.currentUser.uid), {
           ...partial, updatedAt: serverTimestamp(),
         }, { merge: true });
+        if (generation === this.sync.generation && revision === this.profileRevision) this._clearPendingUpload("profile");
       } catch (e) {
         // 静默失败，等待下次合并上传
         if (generation === this.sync.generation) this._markPendingUpload("profile");
@@ -533,6 +520,11 @@ class StorageManager {
   // Assistant proposals pass the same local-first write queue as the manual
   // editors. The caller validates values and rechecks the reviewed snapshot.
   async writeAssistantRecord(category, dateKey, record, deleted = false, id = null) {
+    if (["medicine", "supplement"].includes(category) && !record.planId) {
+      const plans = normalizePlans(this.getCachedProfile()[category === "medicine" ? "medicines" : "supplements"] || [], category);
+      const plan = plans.find(plan => plan.name === record.name);
+      if (plan) record = { ...record, planId: plan.id };
+    }
     if (category === "goals") {
       await this.updateProfile({ dailyGoal: record.dailyGoal, ...(record.nutritionGoal ? { nutritionGoal: record.nutritionGoal } : {}) });
       return record;
@@ -628,6 +620,7 @@ class StorageManager {
   }
 
   async addWaterLog(record) {
+    if (!validWaterAmount(record.amount)) throw new Error("饮水容量须为 10～5000 ml 的整数");
     const target = this.isCloud ? doc(collection(this.db, "users", this.currentUser.uid, "waterLogs")) : null;
     const rec = { ...record, id: target?.id || generateLocalId(), recordedAt: record.recordedAt || new Date() };
     const dateKey = record.logDate || toDateKey(new Date());
@@ -710,6 +703,11 @@ class StorageManager {
   async addLog(type, record) {
     if (type === "meal") return this.saveMealRecord(record);
     const cfg = this._typeConfig(type);
+    if (["medicine", "supplement"].includes(type) && !record.planId) {
+      const plans = normalizePlans(this.getCachedProfile()[type === "medicine" ? "medicines" : "supplements"] || [], type);
+      const plan = plans.find(plan => plan.name === record.name || planMatchesRecord(plan, record));
+      if (plan) record = { ...record, planId: plan.id };
+    }
     const target = this.isCloud ? doc(collection(this.db, "users", this.currentUser.uid, cfg.coll)) : null;
     const rec = { ...record, id: target?.id || generateLocalId(), recordedAt: record.recordedAt || new Date() };
     const dateKey = record.logDate || toDateKey(new Date());
@@ -727,17 +725,18 @@ class StorageManager {
   }
 
   _saveMealLocal(data) {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+    try { localStorage.setItem(this.localKey, JSON.stringify(data)); }
     catch { throw new Error("设备存储空间不足，饮食记录未保存，请释放空间后重试"); }
     this.invalidateHistory();
   }
 
-  async getMealLogs(dateKey) {
+  async getMealLogs(dateKey, { force = false } = {}) {
     const generation = this.sync.generation;
     const revision = this.dayRevisions.get(dateKey);
     if (this.isCloud && navigator.onLine) {
       try {
         const snap = await getDocs(query(collection(this.db, "users", this.currentUser.uid, "mealLogs"), where("logDate", "==", dateKey)));
+        if (force && snap.metadata?.fromCache) throw new Error("饮食照片尚未完整同步，请联网后重试备份");
         const remote = await Promise.all(snap.docs.map(async snapshot => {
           const record = { ...snapshot.data(), id: snapshot.id };
           const photos = (record.photos || []).filter(isMealPhoto);
@@ -754,7 +753,7 @@ class StorageManager {
           [...remote.filter(record => !pending.some(local => local.id === record.id)), ...pending])
           .map(record => ({ ...record, recordedAt: new Date(record.recordedAt).toISOString() }));
         this._saveMealLocal(data);
-      } catch (error) { console.warn("[Storage] 饮食读取使用本地记录:", error.message); }
+      } catch (error) { if (force) throw error; console.warn("[Storage] 饮食读取使用本地记录:", error.message); }
     }
     const data = this._loadLocal();
     return Promise.all((data.records[dateKey]?.meal || []).map(async record => ({
@@ -939,9 +938,10 @@ class StorageManager {
   }
 
   async saveCups(cups) {
+    if (!Array.isArray(cups) || !cups.length || cups.some(cup => !cup.name?.trim() || !validWaterAmount(cup.amount))) throw new Error("请填写水杯名称和 10～5000 ml 的整数容量");
     const data = this._loadLocal();
     data.cups = cups;
-    this._saveLocal(data);
+    if (!this._saveLocal(data)) throw new Error("设备存储空间不足，水杯未保存");
   }
 
   // ========== Settings (音效/震动/语言) ==========
@@ -965,7 +965,111 @@ class StorageManager {
   async updateReminder(partial) {
     const data = this._loadLocal();
     data.reminder = { ...DEFAULT_REMINDER, ...(data.reminder || {}), ...partial };
-    this._saveLocal(data);
+    if (!this._saveLocal(data)) throw new Error("设备存储空间不足，提醒未保存");
+  }
+
+  async createBackup() {
+    const generation = this.sync.generation;
+    const guard = () => { if (generation !== this.sync.generation) throw new Error("账户已切换，请重新操作备份"); };
+    if (this.isCloud && !navigator.onLine) throw new Error("请联网后导出完整账户备份，避免遗漏云端记录");
+    const profile = await this.getProfile({ force: true }); guard();
+    const history = this.isCloud
+      ? await this.getHistoryRange({ startDate: "0001-01-01", endDate: toDateKey(new Date()) }, { force: true })
+      : this._getLocalHistory();
+    guard();
+    const local = this._loadLocal(), scope = this.currentUser?.uid || "__local__";
+    const data = { profile: { ...profile }, records: {}, workoutDays: {}, workoutDetails: {},
+      bodyMeasurements: { ...local.bodyMeasurements?.[scope] }, fridgeInventory: { ...this.getCachedFridgeInventory() },
+      cups: [...(local.cups || DEFAULT_CUPS)], settings: { ...DEFAULT_SETTINGS, ...local.settings }, reminder: { ...DEFAULT_REMINDER, ...local.reminder } };
+    delete data.profile.fridgeInventory;
+    const dates = new Set([...history.map(day => day.dateKey), ...Object.keys(local.records)]);
+    const days = new Map(history.map(day => [day.dateKey, day]));
+    for (const date of dates) {
+      const day = days.get(date);
+      data.records[date] = {};
+      for (const type of BACKUP_TYPES) {
+        const rows = new Map((day?.[HISTORY_FIELDS[type]] || []).map(row => [row.id, row]));
+        if (!this.isCloud || local.pendingUpload?.[`${date}/${type}`]) for (const row of local.records[date]?.[type] || []) rows.set(row.id, row);
+        data.records[date][type] = [...rows.values()].map(row => ({ ...row, recordedAt: recordISO(row.recordedAt) }));
+      }
+      if (day?.isWorkout || day?.workoutDetail?.activity === "休息日") {
+        data.workoutDays[date] = day.isWorkout;
+        data.workoutDetails[date] = day.workoutDetail;
+      }
+      if (local.pendingUpload?.[`workout:${date}`]) {
+        data.workoutDays[date] = local.workoutDays[date]; data.workoutDetails[date] = local.workoutDetails[date] || {};
+      }
+    }
+    // Range histories deliberately omit image payloads. Fetch meal documents for
+    // every exported meal day, even when that date has never been opened here.
+    for (const date of dates) {
+      if (!data.records[date].meal.length) continue;
+      const meals = this.isCloud ? await this.getMealLogs(date, { force: true }) : await this.getCachedMealLogs(date);
+      guard();
+      const photos = new Map(meals.map(row => [row.id, row.photos]));
+      for (const row of data.records[date].meal) {
+        if (this.isCloud && !photos.has(row.id)) throw new Error("饮食记录已变化，请重新导出备份");
+        row.photos = photos.get(row.id) || await this.readMealPhotos(row);
+        delete row.photoIds; delete row.mealPending; delete row.mealRevision;
+      }
+    }
+    guard();
+    return { format: "health-tracker-backup", version: 2, exportedAt: new Date().toISOString(), data };
+  }
+
+  async previewBackupImport(backup) {
+    const existing = await this.createBackup();
+    return planBackupRestore(parseBackup(existing).data, parseBackup(backup).data).counts;
+  }
+
+  async restoreBackup(backup, { restoreSettings = false } = {}) {
+    const generation = this.sync.generation, incoming = parseBackup(backup).data;
+    const existing = await this.createBackup();
+    if (generation !== this.sync.generation) throw new Error("账户已切换，请重新选择备份");
+    const { additions, counts } = planBackupRestore(parseBackup(existing).data, incoming);
+    // Finish all async image writes before the single durable data commit.
+    for (const day of Object.values(additions.records)) for (const row of day.meal || []) {
+      row.photoIds = await this.mealPhotos.put(row.photos); delete row.photos;
+    }
+    if (generation !== this.sync.generation) throw new Error("账户已切换，请重新选择备份");
+    const data = this._loadLocal(), scope = this.currentUser?.uid || "__local__";
+    const changes = [];
+    for (const [date, day] of Object.entries(additions.records)) {
+      data.records[date] ||= Object.fromEntries(BACKUP_TYPES.map(type => [type, []]));
+      for (const type of BACKUP_TYPES) for (const row of day[type] || []) {
+        data.records[date][type].push(row); changes.push({ type, dateKey: date, id: row.id, record: row });
+      }
+    }
+    for (const [date, value] of Object.entries(additions.workoutDays)) {
+      data.workoutDays[date] = value; data.workoutDetails[date] = additions.workoutDetails[date];
+      changes.push({ type: "workout", dateKey: date, id: date, record: { ...additions.workoutDetails[date], isWorkout: value } });
+    }
+    for (const change of changes) {
+      if (this.isCloud) {
+        data.recordWrites ||= {}; data.recordWrites[scope] ||= {};
+        data.recordWrites[scope][`${change.type}:${change.id}`] = { ...change, deleted: false, revision: generateLocalId() };
+      } else {
+        data.pendingUpload ||= {};
+        data.pendingUpload[change.type === "workout" ? `workout:${change.dateKey}` : `${change.dateKey}/${change.type}`] = true;
+      }
+    }
+    for (const [field, pending, rows] of [["bodyMeasurements", "bodyMeasurementPending", additions.bodyMeasurements], ["fridgeInventories", "fridgePending", additions.fridgeInventory]]) {
+      data[field] ||= {}; data[field][scope] = { ...data[field][scope], ...rows };
+      data[pending] ||= {}; data[pending][scope] = { ...data[pending][scope], ...rows };
+    }
+    if (restoreSettings) {
+      data.profile = { ...data.profile, ...incoming.profile };
+      if (incoming.cups.length) data.cups = incoming.cups;
+      if (incoming.settings) data.settings = { ...data.settings, ...incoming.settings };
+      if (incoming.reminder) data.reminder = incoming.reminder;
+      data.pendingUpload ||= {}; data.pendingUpload.profile = true;
+    }
+    if (!this._saveLocal(data, true)) throw new Error("设备存储空间不足，备份未恢复，原有记录已保留");
+    for (const change of changes) this.dayRevisions.set(change.dateKey, (this.dayRevisions.get(change.dateKey) || 0) + 1);
+    this.profileRevision++; this.fridgeRevision++;
+    window.dispatchEvent(new Event("body-measurements-change")); window.dispatchEvent(new Event("fridge-change"));
+    if (this.isCloud) void this.mergeLocalToCloud();
+    return counts;
   }
 
   // ========== History (multi-day) ==========
@@ -1128,7 +1232,7 @@ class StorageManager {
           readCollection("medicineLogs"),
           readCollection("supplementLogs"),
           readCollection("toiletLogs"),
-          readCollection("mealLogs").catch(() => ({ docs: [] })),
+          readCollection("mealLogs"),
           readCollection("workoutLogs"),
         ]);
         if (range && [waterSnap, medSnap, suppSnap, toiletSnap, mealSnap, workoutSnap].some(snapshot => snapshot.metadata?.fromCache)) {
@@ -1274,7 +1378,7 @@ class StorageManager {
       await this.sync.run({ key: `merge:${this.currentUser.uid}`, label: "记录上传", kind: "write",
         timeoutMs: this.syncBatchTimeoutMs, recoverOnLateSuccess: false, retry: false, operation: async ({ signal }) => {
           const deadline = Date.now() + this.syncBatchTimeoutMs;
-          await Promise.allSettled([...this._pendingRecordChanges().map(change => this._syncRecordChange(change)), this._syncFridge()]);
+          await Promise.allSettled([...this._pendingRecordChanges().map(change => this._syncRecordChange(change)), this._syncFridge(), this._syncBodyMeasurements()]);
           if (signal.aborted || !this._canContinueSyncBatch(generation, deadline)) return;
           await this._mergeLocalToCloud(deadline);
         } });
@@ -1318,6 +1422,7 @@ class StorageManager {
           avatarUrl: data.profile.avatarUrl || "",
           updatedAt: serverTimestamp(),
         }, { merge: true });
+        if (generation !== this.sync.generation) return;
         this._clearPendingUpload("profile");
       } catch (e) { /* */ }
     }
@@ -1333,6 +1438,7 @@ class StorageManager {
             ...(data.workoutDetails?.[dk] || {}),
             updatedAt: serverTimestamp(),
           }, { merge: false });
+          if (generation !== this.sync.generation) return;
           this._clearPendingUpload(`workout:${dk}`);
         } catch (e) { /* */ }
       } else if (pending) {
@@ -1384,7 +1490,7 @@ class StorageManager {
         if (!dup) {
           try {
             await setDoc(doc(cloudDb, "users", uid, "medicineLogs", rec.id), {
-              name: rec.name, dosage: rec.dosage || "", count: rec.count || 1,
+              name: rec.name, dosage: rec.dosage || "", count: rec.count ?? 1, ...(rec.planId ? { planId: rec.planId } : {}),
               ...(rec.targetCount ? { targetCount: rec.targetCount } : {}),
               logDate: dk, recordedAt: new Date(rec.recordedAt),
             });
@@ -1401,7 +1507,7 @@ class StorageManager {
         if (!dup) {
           try {
             await setDoc(doc(cloudDb, "users", uid, "supplementLogs", rec.id), {
-              name: rec.name, dosage: rec.dosage || "", count: rec.count || 1,
+              name: rec.name, dosage: rec.dosage || "", count: rec.count ?? 1, ...(rec.planId ? { planId: rec.planId } : {}),
               ...(rec.targetCount ? { targetCount: rec.targetCount } : {}),
               logDate: dk, recordedAt: new Date(rec.recordedAt),
             });
@@ -1446,6 +1552,7 @@ class StorageManager {
       }
 
       // 保留未确认上传的数据；成功的重试可清除标记。
+      if (generation !== this.sync.generation) return;
       if (pending && !hasFailures()) {
         for (const type of RECORD_TYPES) {
           if (pending[`${dk}/${type}`]) this._clearPendingUpload(`${dk}/${type}`);

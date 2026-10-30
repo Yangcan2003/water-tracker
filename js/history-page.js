@@ -44,7 +44,7 @@ export function createHistoryPage(root, { storage, openDay }) {
     <div class="history-filter-bar" role="group" aria-label="记录分类">${HISTORY_CATEGORIES.map(item => `<button type="button" data-history-category="${item.key}" aria-pressed="${item.key === "all"}">${item.label}</button>`).join("")}</div>
     <div class="history-list-toolbar"><div><h2>每日记录</h2><span class="history-list-count"></span></div><button class="history-calendar-toggle" type="button" data-history-action="calendar" aria-expanded="false" aria-controls="historyCalendar">${icon("calendar")}日历</button></div>
     <div class="history-calendar" id="historyCalendar" hidden></div>
-    <div class="history-selected-day" hidden><span></span><button type="button" data-history-action="clear-day">查看整月</button></div>
+    <div class="history-selected-day" hidden><span></span><button type="button" data-history-action="add-day">补录这一天</button><button type="button" data-history-action="clear-day">查看整月</button></div>
     <p class="history-load-notice" role="status" hidden></p>
     <div class="history-page-content" id="historyPageContent"></div>
     <dialog class="history-month-dialog" aria-labelledby="historyMonthDialogTitle">
@@ -177,6 +177,7 @@ export function createHistoryPage(root, { storage, openDay }) {
       case "refresh": if (!loading) { storage.invalidateHistory(); void load({ manual: true }); } break;
       case "calendar": calendarOpen = !calendarOpen; renderCalendar(); break;
       case "clear-day": selectedDay = null; render(); break;
+      case "add-day": if (selectedDay) openDay(days?.find(day => day.dateKey === selectedDay) || { dateKey: selectedDay }); break;
       case "choose-month": pickerYear = Number(month.slice(0, 4)); renderPicker(); picker.showModal(); break;
       case "close-picker": picker.close(); break;
       case "previous-year": pickerYear--; renderPicker(); break;

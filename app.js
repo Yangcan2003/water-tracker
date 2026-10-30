@@ -30,7 +30,12 @@ import { createWaterDialog } from "./js/water-dialog.js";
 import { createEdgeSwipeBack } from "./js/edge-swipe-back.js";
 import { chatGPTPlan } from "./js/chatgpt-plan-client.js";
 import { intakeSummary, intakeCard, intakeIcon } from "./js/intake-ui.js";
-import { enabledPlans, enabledSupplements, SCHEDULE_LABELS } from "./js/supplement-plan.js";
+import { enabledPlans, enabledSupplements, SCHEDULE_LABELS, normalizePlans, planMatchesRecord } from "./js/supplement-plan.js";
+import { generateLocalId } from "./js/utils.js";
+import { validWaterAmount } from "./js/water-values.js";
+import { createBackupPage } from "./js/backup-page.js";
+import { createHistoryRecordEditor } from "./js/history-record-editor.js";
+import { dashboardNutritionText } from "./js/dashboard-nutrition.js";
 import { initializeNativePlatform, isNativeApp, nativeHaptic, shareDataBackup, syncNativeReminders } from "./js/native.js";
 import { initializeAppearance, currentTheme } from "./js/appearance.js";
 
@@ -42,6 +47,8 @@ let navigationRevision = 0;
 let bootUser = null;
 const LAST_USER_KEY = "watertracker:lastUser";
 let selectedDate = toDateKey(new Date());
+let lastCalendarDay = selectedDate;
+let historyDetailDay = null;
 let records = [], dailyGoal = 2000, authMode = "login";
 let lastRecordAction = null, toastTimer = null, requestVersion = 0;
 
@@ -81,6 +88,7 @@ function $(sel) { return document.querySelector(sel); }
   "currentAmount","goalAmount","progressPercent","progressBar","progressMessage",
   "waterFill","waterWave","historyList","recordCount",
   "goalDialog","goalForm","goalInput",
+  "recordDateBar","recordDateInput","recordDateLabel","recordPreviousDay","recordNextDay","recordToday","dashboardNutritionRemaining",
   "recordTimeDialog","recordTimeForm","recordTimeInput","recordTimeSaveButton",
   "customButton","customDialog","customForm","customName","customAmount",
   "toast","toastText","undoButton",
@@ -124,7 +132,7 @@ function $(sel) { return document.querySelector(sel); }
   "mealListCount","mealDayStatus",
   "mealDailyKcal","mealDailyCarbs","mealDailyProtein","mealDailyFat","mealDailyCoverage","mealDailyNote",
   "mealQuickCamera","mealQuickText","mealActionsDialog","mealActionsTitle","mealActionsSummary","mealActionEdit","mealActionRepeat","mealActionDelete","mealDeleteLabel",
-  "workoutDateLabel","workoutCurrentStatus",
+  "workoutDateLabel","workoutCurrentStatus","workoutClear",
   "dashboardWaterValue","dashboardWaterSub","dashboardWaterRing",
   "dashboardQuickWater","dashboardCustomWater","dashboardToiletSub",
   "dashboardMedicineSub","dashboardMedicineUnit","dashboardSupplementSub","dashboardSupplementUnit",
@@ -179,6 +187,22 @@ const assistantPage = createAssistantPage(E.assistantPanel, {
     historyPage.reset();
     void loadDay();
   },
+});
+const backupPage = createBackupPage({ storage, showToast, onRestored: async () => {
+  historyPage.reset();
+  await loadProfile();
+  await loadDay();
+  appSettings = await storage.getSettings(); reminderSettings = await storage.getReminder();
+  setLang(appSettings.language || "zh"); updatePageLanguage(); startReminderCheck();
+  renderAccountPage();
+} });
+const historyRecordEditor = createHistoryRecordEditor({ storage, showToast,
+  onChanged: async () => { E.historyDialog.close(); await loadDay(); await historyPage.load(); },
+  onMeal: async (record, date) => {
+    E.historyDialog.close(); openDetail("meal", { date });
+    openMealDialog("meal", record);
+  },
+  onWorkout: date => { E.historyDialog.close(); openDetail("workout", { date }); },
 });
 
 // ========== 事件绑定 ==========
@@ -245,6 +269,10 @@ E.historyList.addEventListener("click", (event) => {
 });
 
 E.historyContent.addEventListener("click", (event) => {
+  const edit = event.target.closest("[data-history-edit]");
+  if (edit && historyDetailDay) { void historyRecordEditor.open(edit.dataset.historyEdit, edit.dataset.recordId, historyDetailDay.dateKey); return; }
+  const add = event.target.closest("[data-history-add]");
+  if (add && historyDetailDay) { E.historyDialog.close(); openDetail(add.dataset.historyAdd, { date: historyDetailDay.dateKey }); return; }
   // 优先检查返回按钮（避免行点击冲突）
   const backBtn = event.target.closest(".history-back-btn");
   if (backBtn) { E.historyDialog.close(); return; }
@@ -268,6 +296,11 @@ E.assistantTab.addEventListener("click", () => switchMain("assistant"));
 E.historyTab.addEventListener("click", () => switchMain("history"));
 E.accountTab.addEventListener("click", () => switchMain("account"));
 E.detailBackButton.addEventListener("click", () => switchMain("overview"));
+E.recordDateInput.addEventListener("change", () => changeRecordDate(E.recordDateInput.value));
+E.recordToday.addEventListener("click", () => changeRecordDate(toDateKey(new Date())));
+for (const [button, offset] of [[E.recordPreviousDay, -1], [E.recordNextDay, 1]]) button.addEventListener("click", () => {
+  const date = fromDateKey(selectedDate); date.setDate(date.getDate() + offset); changeRecordDate(toDateKey(date));
+});
 document.querySelectorAll("[data-detail]").forEach(button => {
   button.addEventListener("click", () => openDetail(button.dataset.detail));
 });
@@ -428,6 +461,19 @@ E.mealDialog?.addEventListener("close", () => { mealEditorKeyboard.close(); meal
 document.querySelectorAll("[data-workout-preset]").forEach(button => {
   button.addEventListener("click", () => markWorkoutDay(button.dataset.workoutPreset));
 });
+E.workoutClear.addEventListener("click", async () => {
+  if (E.workoutClear.dataset.confirm !== "true") { E.workoutClear.dataset.confirm = "true"; E.workoutClear.textContent = "再点一次确认清除"; return; }
+  const date = selectedDate, generation = storage.sync.generation;
+  E.workoutClear.disabled = true;
+  try {
+    await storage.writeAssistantRecord("workout", date, {}, true, date);
+    if (generation !== storage.sync.generation || date !== selectedDate) return;
+    workoutDetail = {}; isWorkoutDay = false; workoutDaysCache[date] = false;
+    renderWorkout(); renderItemList("medicine"); renderItemList("supplement"); updateDailyOverview();
+    showToast("当日训练标记已清除", false);
+  } catch (error) { showToast(toFriendlyError(error), false); }
+  finally { E.workoutClear.disabled = false; }
+});
 
 E.deleteSupplementBtn.addEventListener("click", () => {
   if (currentEditItem?.type === "supplement") deleteCustomItem("supplement", currentEditItem.name);
@@ -571,6 +617,7 @@ const DETAIL_TITLES = {
 };
 
 function hideAllContent() {
+  E.recordDateBar.hidden = true;
   assistantPage.close();
   [E.dashboardPanel, E.assistantPanel, E.timelinePanel, E.accountPanel, E.waterPanel, E.toiletPanel, E.mealPanel, E.workoutPanel, E.medicinePanel, E.supplementPanel]
     .forEach(panel => { if (panel) panel.hidden = true; });
@@ -620,33 +667,25 @@ function switchMain(section) {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-function openDetail(type) {
+function openDetail(type, options = {}) {
   const resolvedType = type;
   const panel = E[`${resolvedType}Panel`];
   if (!panel) return;
   edgeSwipeBack.cancel();
   navigationRevision++;
-  // Intake pages always show today, even after viewing a past meal date.
-  if (["medicine", "supplement"].includes(resolvedType)) {
-    const today = toDateKey(new Date());
-    if (selectedDate !== today) {
-      selectedDate = today;
-      void loadDay();
-    }
-  }
+  const date = options.date || toDateKey(new Date());
+  if (selectedDate !== date) { selectedDate = date; void loadDay(); }
   hideAllContent();
   panel.hidden = false;
+  E.recordDateBar.hidden = false;
+  renderRecordDate();
   E.detailBackBar.hidden = false;
   document.body.dataset.section = "detail";
   document.querySelector(".topbar h1").textContent = DETAIL_TITLES[resolvedType];
   setPrimaryTab("overview");
   if (resolvedType === "water") render();
   else if (resolvedType === "toilet") renderToiletHistory();
-  else if (resolvedType === "meal") {
-    const today = toDateKey(new Date());
-    if (selectedDate !== today) { selectedDate = today; void loadDay(); }
-    else renderMeals();
-  }
+  else if (resolvedType === "meal") renderMeals();
   else if (resolvedType === "workout") renderWorkout();
   else renderItemList(resolvedType);
   if (E.appShell) E.appShell.scrollTo({ top: 0, behavior: "auto" });
@@ -673,7 +712,6 @@ async function initialize() {
     } catch {
       db = getFirestore(app);
     }
-    storage.setUser(null, null);
     onAuthStateChanged(auth, applyUser);
   } catch (e) {
     showAuthMessage(`初始化失败：${e.message}`);
@@ -687,11 +725,11 @@ async function initialize() {
 async function bootFromCache() {
   const navigationAtStart = navigationRevision;
   try { bootUser = JSON.parse(localStorage.getItem(LAST_USER_KEY) || "null"); } catch { bootUser = null; }
-  storage.setUser(null, null);
+  storage.setUser(bootUser?.uid ? bootUser : null, null);
   const profile = await storage.getProfile();
   dailyGoal = profile.dailyGoal || 2000;
-  userMedicines = (profile.medicines || [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
-  userSupplements = (profile.supplements || [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
+  userMedicines = normalizePlans((profile.medicines || [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s })), "medicine");
+  userSupplements = normalizePlans((profile.supplements || [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s })), "supplement");
   avatarType = profile.avatarType || "default";
   avatarColor = profile.avatarColor || "#168d84";
   avatarUrl = profile.avatarUrl || "";
@@ -725,15 +763,20 @@ async function applyUser(user) {
   // Invalidate old day requests before switching the storage account.
   requestVersion++;
   if (accountChanged) {
+    backupPage.reset();
     hideToast();
     historyPage.reset();
     historyDayData = [];
+    for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
   }
+  records = []; medicineRecords = []; supplementRecords = []; toiletRecords = []; mealRecords = [];
+  userMedicines = []; userSupplements = [];
+  isWorkoutDay = false; workoutDetail = {}; workoutDaysCache = {};
   assistantPage.resetUser();
   if (!user) {
     // 未登录 → 本地模式，应用仍然可用
-    localStorage.removeItem(LAST_USER_KEY);
     storage.setUser(null, null);
+    localStorage.removeItem(LAST_USER_KEY);
     const generation = storage.sync.generation;
     records = []; medicineRecords = []; supplementRecords = []; toiletRecords = []; mealRecords = [];
     userMedicines = []; userSupplements = [];
@@ -742,8 +785,8 @@ async function applyUser(user) {
     const profile = await storage.getProfile();
     if (generation !== storage.sync.generation) return;
     dailyGoal = profile.dailyGoal || 2000;
-    userMedicines = profile.medicines || [...DEFAULT_MEDICINES];
-    userSupplements = profile.supplements || [...DEFAULT_SUPPLEMENTS];
+    userMedicines = normalizePlans(profile.medicines || [...DEFAULT_MEDICINES], "medicine");
+    userSupplements = normalizePlans(profile.supplements || [...DEFAULT_SUPPLEMENTS], "supplement");
     avatarType = profile.avatarType || "default";
     avatarColor = profile.avatarColor || "#168d84";
     avatarUrl = profile.avatarUrl || "";
@@ -767,7 +810,7 @@ async function applyUser(user) {
   E.profileEmail.textContent = user.email || "已登录";
   // 记住登录身份，下次启动时首屏直接显示云端账户
   try {
-    localStorage.setItem(LAST_USER_KEY, JSON.stringify({ email: user.email || "", displayName: user.displayName || "" }));
+    localStorage.setItem(LAST_USER_KEY, JSON.stringify({ uid: user.uid, email: user.email || "", displayName: user.displayName || "" }));
   } catch { /* 存储不可用时仅影响首屏展示 */ }
 
   // 同步状态只在“我的”页面展示，不弹出同步通知。
@@ -840,8 +883,8 @@ async function loadProfile() {
     const profile = await storage.getProfile();
     if (generation !== storage.sync.generation) return;
     dailyGoal = Number(profile.dailyGoal) || 2000;
-    userMedicines = (Array.isArray(profile.medicines) ? profile.medicines : [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
-    userSupplements = (Array.isArray(profile.supplements) ? profile.supplements : [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s }));
+    userMedicines = normalizePlans((Array.isArray(profile.medicines) ? profile.medicines : [...DEFAULT_MEDICINES]).map(s => ({ targetCount: 1, schedule: "everyday", ...s })), "medicine");
+    userSupplements = normalizePlans((Array.isArray(profile.supplements) ? profile.supplements : [...DEFAULT_SUPPLEMENTS]).map(s => ({ targetCount: 1, schedule: "everyday", ...s })), "supplement");
     // Preserve the chosen schedule, including training on weekends.
     avatarType = profile.avatarType || "default";
     avatarColor = profile.avatarColor || AVATAR_COLORS[0];
@@ -856,6 +899,7 @@ async function loadProfile() {
 }
 
 function loadDay() {
+  renderRecordDate();
   const version = ++requestVersion;
   const dateKey = selectedDate;
   mealDayLoading = false;
@@ -974,10 +1018,11 @@ function saveAvatar() {
 
 // ========== 饮水 ==========
 async function addRecord(source, amount) {
+  if (!validWaterAmount(amount)) { showToast("饮水容量须为 10～5000 ml 的整数", false); return; }
   const generation = storage.sync.generation;
   const logDate = selectedDate;
   try {
-    const now = new Date();
+    const now = recordTimeForDate(logDate);
     const rec = await storage.addWaterLog({ source, amount, logDate, recordedAt: now });
     if (generation !== storage.sync.generation) return;
     if (logDate === selectedDate) records.push(rec);
@@ -1006,6 +1051,7 @@ async function deleteRecord(id) {
   try {
     await storage.deleteWaterLog(id);
   } catch (e) {
+    if (action.generation !== storage.sync.generation || rec.logDate !== selectedDate) return;
     records.splice(idx, 0, rec); render();
     if (lastRecordAction === action) showToast(toFriendlyError(e), false);
   }
@@ -1049,27 +1095,33 @@ async function undoRecordAction() {
 
 // ========== 修改记录时间 ==========
 async function updateRecordTime(coll, id, newTime) {
+  const generation = storage.sync.generation, date = selectedDate;
+  const current = () => generation === storage.sync.generation && date === selectedDate;
   try {
     if (coll === "waterLogs") {
       await storage.updateWaterLogTime(id, newTime);
+      if (!current()) return false;
       const idx = records.findIndex(r => r.id === id);
       if (idx >= 0) records[idx].recordedAt = newTime;
       records.sort((a, b) => a.recordedAt - b.recordedAt);
       render();
     } else if (coll === "toiletLogs") {
       await storage.updateLogTime("toilet", id, newTime);
+      if (!current()) return false;
       const idx = toiletRecords.findIndex(r => r.id === id);
       if (idx >= 0) toiletRecords[idx].recordedAt = newTime;
       toiletRecords.sort((a, b) => a.recordedAt - b.recordedAt);
       renderToiletHistory();
     } else if (coll === "medicineLogs") {
       await storage.updateLogTime("medicine", id, newTime);
+      if (!current()) return false;
       const idx = medicineRecords.findIndex(r => r.id === id);
       if (idx >= 0) medicineRecords[idx].recordedAt = newTime;
       medicineRecords.sort((a, b) => a.recordedAt - b.recordedAt);
       renderItemList("medicine");
     } else if (coll === "supplementLogs") {
       await storage.updateLogTime("supplement", id, newTime);
+      if (!current()) return false;
       const idx = supplementRecords.findIndex(r => r.id === id);
       if (idx >= 0) supplementRecords[idx].recordedAt = newTime;
       supplementRecords.sort((a, b) => a.recordedAt - b.recordedAt);
@@ -1120,7 +1172,7 @@ async function addToiletRecord(type) {
   const generation = storage.sync.generation;
   const logDate = selectedDate;
   try {
-    const now = new Date();
+    const now = recordTimeForDate(logDate);
     const rec = await storage.addLog("toilet", { type, logDate, recordedAt: now });
     if (generation !== storage.sync.generation) return;
     if (logDate === selectedDate) toiletRecords.push(rec);
@@ -1141,6 +1193,7 @@ async function deleteToiletRecord(id) {
   try {
     await storage.deleteLog("toilet", id);
   } catch (e) {
+    if (action.generation !== storage.sync.generation || rec.logDate !== selectedDate) return;
     toiletRecords.splice(idx, 0, rec); renderToiletHistory();
     if (lastRecordAction === action) showToast(toFriendlyError(e), false);
   }
@@ -1148,9 +1201,22 @@ async function deleteToiletRecord(id) {
 
 // ========== 饮食日记 ==========
 function ensureMealsToday() {
-  if (E.mealPanel.hidden) return;
   const today = toDateKey(new Date());
-  if (selectedDate !== today) { selectedDate = today; void loadDay(); }
+  if (today === lastCalendarDay || document.querySelector("dialog[open]")) return;
+  if (selectedDate === lastCalendarDay) { selectedDate = today; void loadDay(); }
+  lastCalendarDay = today;
+}
+function renderRecordDate() {
+  E.recordDateInput.max = toDateKey(new Date());
+  E.recordDateInput.value = selectedDate;
+  E.recordDateLabel.textContent = selectedDate === toDateKey(new Date()) ? "今天" : fromDateKey(selectedDate).toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+  E.recordNextDay.disabled = selectedDate >= toDateKey(new Date());
+  E.recordToday.hidden = selectedDate === toDateKey(new Date());
+}
+function recordTimeForDate(dateKey) {
+  const now = new Date(), date = fromDateKey(dateKey);
+  date.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+  return date;
 }
 function changeRecordDate(dateKey) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || toDateKey(fromDateKey(dateKey)) !== dateKey || dateKey > toDateKey(new Date())) return;
@@ -1175,11 +1241,10 @@ function openMealDialog(type = "meal", record = null, options = {}) {
   if (mealSaving || mealDayLoading) return;
   mealSelectionVersion++;
   const editing = Boolean(record && !options.repeat);
-  const today = toDateKey(new Date());
-  if (selectedDate !== today) { selectedDate = today; void loadDay(); }
+  const date = editing ? record.logDate || selectedDate : selectedDate;
   mealDraft = { id: editing ? record.id : null, photos: [...(record?.photos || [])], processing: false,
     nutrition: normalizeMealNutrition(record?.nutrition), nutritionVersion: 0, analyzing: false,
-    clock: new MealTimeDraft(today, editing ? toJSDate(record.recordedAt) : null) };
+    generation: storage.sync.generation, clock: new MealTimeDraft(date, editing ? toJSDate(record.recordedAt) : null) };
   if (options.repeat) mealDraft.clock.capture();
   // Keep older notes editable after consolidating the two text fields.
   E.mealNameInput.value = [record?.name, record?.note].filter(value => value?.trim()).join("\n");
@@ -1253,6 +1318,7 @@ async function handleMealSubmit(event) {
   event.preventDefault();
   if (!mealDraft || mealSaving || mealDraft.processing || mealDraft.analyzing || mealDraft.connecting || !E.mealForm.reportValidity()) return;
   const draft = mealDraft;
+  if (draft.generation !== storage.sync.generation) { E.mealDialog.close(); return; }
   const name = E.mealNameInput.value.trim();
   if (!name && !draft.photos.length) { showToast("请添加食物照片或填写文字记录", false); return; }
   captureMealTime();
@@ -1264,6 +1330,7 @@ async function handleMealSubmit(event) {
   renderMealPhotoDraft();
   try {
     const saved = await storage.saveMealRecord(meal, draft.id);
+    if (draft.generation !== storage.sync.generation) return;
     if (selectedDate === meal.logDate) {
       const index = mealRecords.findIndex(record => record.id === saved.id);
       if (index < 0) mealRecords.push(saved); else mealRecords[index] = saved;
@@ -1278,6 +1345,7 @@ async function handleMealSubmit(event) {
 }
 
 async function deleteMealRecord(id) {
+  const generation = storage.sync.generation;
   const dateKey = selectedDate;
   const index = mealRecords.findIndex(record => record.id === id);
   if (index < 0) return;
@@ -1286,8 +1354,10 @@ async function deleteMealRecord(id) {
   updateDailyOverview();
   try {
     await storage.deleteLog("meal", id);
+    if (generation !== storage.sync.generation) return;
     showToast("饮食记录已删除", false);
   } catch (e) {
+    if (generation !== storage.sync.generation) return;
     if (selectedDate === dateKey) {
       mealRecords.splice(index, 0, record);
       renderMeals();
@@ -1299,8 +1369,7 @@ async function deleteMealRecord(id) {
 
 function renderMeals() {
   if (!E.mealDayList) return;
-  const today = toDateKey(new Date());
-  const rows = mealRecords.filter(record => record.logDate ? record.logDate === today : selectedDate === today)
+  const rows = mealRecords.filter(record => !record.logDate || record.logDate === selectedDate)
     .sort((a, b) => mealRecordDate(b) - mealRecordDate(a));
   const totals = dailyMealNutrition(rows);
   nutritionGoalsPage.render(totals, mealDayLoading);
@@ -1394,8 +1463,11 @@ async function handleMealAnalysis() {
 // ========== 每日训练标记 ==========
 async function markWorkoutDay(activity) {
   if (workoutDetail.activity === activity) return;
+  const date = selectedDate, generation = storage.sync.generation;
   try {
-    workoutDetail = await storage.saveWorkoutMark(selectedDate, activity);
+    const saved = await storage.saveWorkoutMark(date, activity);
+    if (generation !== storage.sync.generation || date !== selectedDate) return;
+    workoutDetail = saved;
     isWorkoutDay = workoutDetail.isWorkout;
     workoutDaysCache[selectedDate] = isWorkoutDay;
     updateWorkoutToggleUI();
@@ -1404,7 +1476,7 @@ async function markWorkoutDay(activity) {
     renderItemList("supplement");
     updateDailyOverview();
     nativeHaptic("success");
-    showToast(`今天已标记为${activity}`, false);
+    showToast(`${date === toDateKey(new Date()) ? "今天" : date}已标记为${activity}`, false);
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
 
@@ -1413,6 +1485,8 @@ function renderWorkout() {
   updateWorkoutToggleUI();
   const rest = workoutDetail.activity === "休息日";
   const marked = isWorkoutDay || rest;
+  E.workoutClear.hidden = !marked;
+  E.workoutClear.dataset.confirm = "false"; E.workoutClear.textContent = "清除当日标记";
   E.workoutDateLabel.textContent = fromDateKey(selectedDate).toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
   E.workoutCurrentStatus.textContent = marked ? "已记录" : "未标记";
   E.workoutCurrentStatus.dataset.marked = String(marked);
@@ -1430,7 +1504,10 @@ function getCfg(type) {
 function getFullList(type) {
   return enabledPlans(type === "medicine" ? userMedicines : userSupplements);
 }
-function getCount(type, name) { const r = getCfg(type).recs.find(r => r.name === name); return r ? (r.count || 0) : 0; }
+function getCount(type, name) {
+  const item = getFullList(type).find(item => item.name === name);
+  return item ? getCfg(type).recs.filter(record => planMatchesRecord(item, record)).reduce((sum, record) => sum + (record.count || 0), 0) : 0;
+}
 
 async function adjustIntake(type, name, delta) {
   if (mealDayLoading) return;
@@ -1440,22 +1517,26 @@ async function adjustIntake(type, name, delta) {
   const item = getFullList(type).find(item => item.name === name);
   if (!item || (delta > 0 && !isItemActiveToday(type, item))) return;
   const cfg = getCfg(type);
-  const index = cfg.recs.findIndex(record => record.name === name);
+  const generation = storage.sync.generation;
+  const index = cfg.recs.findIndex(record => planMatchesRecord(item, record) && (delta > 0 || record.count > 0));
   const previous = index < 0 ? null : cfg.recs[index];
-  const count = previous?.count || 0;
+  const count = getCount(type, name);
   const target = item.targetCount || 1;
   if ((delta > 0 && count >= target) || (delta < 0 && !count)) return;
   const next = Math.max(0, count + delta);
-  const now = new Date();
+  const now = recordTimeForDate(dateKey);
   intakeBusy.add(key);
   renderItemList(type);
   try {
     if (previous) {
-      await storage.updateLogCount(type, previous.id, next, now);
-      if (selectedDate === dateKey) cfg.recs[index] = { ...previous, count: next, recordedAt: now };
+      const recordCount = Math.max(0, (previous.count || 0) + delta);
+      await storage.updateLogCount(type, previous.id, recordCount, now);
+      if (generation !== storage.sync.generation) return;
+      if (selectedDate === dateKey) cfg.recs[index] = { ...previous, count: recordCount, recordedAt: now };
     } else {
-      const payload = { name, dosage: item.dosage || "1份/次", targetCount: target, count: next, logDate: dateKey, recordedAt: now };
+      const payload = { name, planId: item.id, dosage: item.dosage || "1份/次", targetCount: target, count: next, logDate: dateKey, recordedAt: now };
       const record = await storage.addLog(type, payload);
+      if (generation !== storage.sync.generation) return;
       if (selectedDate === dateKey) cfg.recs.push({ ...payload, id: record.id });
     }
     if (appSettings.vibrationEnabled) nativeHaptic(next >= target ? "success" : "light");
@@ -1540,11 +1621,11 @@ async function handleItemFormSubmit(event, type) {
 async function addCustomItem(type, name, dosage, targetCount, schedule) {
   const arr = type === "medicine" ? userMedicines : userSupplements;
   if (arr.some(s => s.name === name)) { showToast(`"${name}" 已存在`, false); return false; }
-  const newList = [...arr, { name, dosage, targetCount, schedule, emoji: "💊" }];
+  const newList = [...arr, { id: generateLocalId(), legacyNames: [], name, dosage, targetCount, schedule, emoji: "💊" }];
   try {
     if (type === "medicine") userMedicines = newList; else userSupplements = newList;
     refreshItemPlan(type);
-    void storage.saveItems(type, newList);
+    await storage.saveItems(type, newList);
     showToast(`已添加${type === "medicine" ? "药物" : "补剂"} "${name}"`, false);
     return true;
   } catch (e) { showToast(toFriendlyError(e), false); }
@@ -1553,11 +1634,11 @@ async function addCustomItem(type, name, dosage, targetCount, schedule) {
 async function editItem(type, oldName, newName, newDosage, newTarget, newSchedule) {
   const arr = type === "medicine" ? userMedicines : userSupplements;
   if (oldName !== newName && arr.some(s => s.name === newName)) { showToast(`"${newName}" 已存在`, false); return false; }
-  const newList = arr.map(s => s.name === oldName ? { ...s, name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule } : s);
+  const newList = normalizePlans(arr, type).map(s => s.name === oldName ? { ...s, name: newName, dosage: newDosage, targetCount: newTarget, schedule: newSchedule } : s);
   try {
     if (type === "medicine") userMedicines = newList; else userSupplements = newList;
     refreshItemPlan(type);
-    void storage.saveItems(type, newList);
+    await storage.saveItems(type, newList);
     showToast(`已更新${type === "medicine" ? "药物" : "补剂"} "${newName}"`, false);
     return true;
   } catch (e) { showToast(toFriendlyError(e), false); }
@@ -1573,7 +1654,7 @@ async function deleteCustomItem(type, name) {
   try {
     if (type === "medicine") userMedicines = newList; else userSupplements = newList;
     refreshItemPlan(type);
-    void storage.saveItems(type, newList);
+    await storage.saveItems(type, newList);
     showToast(`已删除${label}计划 "${name}"，历史记录保留`, false);
   } catch (e) { showToast(toFriendlyError(e), false); }
 }
@@ -1631,6 +1712,7 @@ function renderDashboard() {
     E[id].textContent = mealDayLoading || nutrition[key] === null ? "—" : nutrition[key].toLocaleString("zh-CN", { maximumFractionDigits: 1 });
   });
   E.dashboardMealCoverage.textContent = nutrition.missing && nutrition.counted ? "已知摄入" : "摄入合计";
+  E.dashboardNutritionRemaining.textContent = dashboardNutritionText(nutrition, storage.getCachedProfile().nutritionGoal, mealDayLoading);
   E.dashboardWorkoutValue.textContent = workoutDetail.activity || (isWorkoutDay ? "训练日" : "未标记");
   [["Medicine", medicine], ["Supplement", supplement]].forEach(([key, progress]) => {
     const complete = progress.total > 0 && progress.completed >= progress.total;
@@ -1930,6 +2012,7 @@ async function loadHistory() {
 // ========== 日详情视图 ==========
 function renderDayDetail(day) {
   if (!day) return;
+  historyDetailDay = day;
   historyViewMode = "detail";
   E.historyContent.innerHTML = historyDetailHTML(day);
 }
@@ -1972,12 +2055,10 @@ function hideToast() {
 }
 
 async function exportData() {
+  if (E.accountExportButton?.disabled) return;
+  if (E.accountExportButton) E.accountExportButton.disabled = true;
   try {
-    const raw = localStorage.getItem("health_tracker_data");
-    const data = raw ? JSON.parse(raw) : { records: {}, profile: {}, workoutDays: {} };
-    for (const day of Object.values(data.records || {})) {
-      for (const record of day.meal || []) record.photos = await storage.readMealPhotos(record);
-    }
+    const data = await storage.createBackup();
     const json = JSON.stringify(data, null, 2);
     const filename = `健康追踪_数据备份_${toDateKey(new Date())}.json`;
     const shareResult = await shareDataBackup(json, filename);
@@ -1997,8 +2078,8 @@ async function exportData() {
     showToast("已发起下载，请确认文件已保存", false);
     E.profileDialog.close();
   } catch (e) {
-    showToast("导出失败", false);
-  }
+    showToast(`导出失败：${toFriendlyError(e)}`, false);
+  } finally { if (E.accountExportButton) E.accountExportButton.disabled = false; }
 }
 
 // ========== i18n（多语言）==========
@@ -2087,12 +2168,15 @@ function openCupEditor() {
   E.cupDialog.showModal();
 }
 
-function addCustomCup() {
+async function addCustomCup() {
   const name = E.newCupName.value.trim();
-  const amount = parseInt(E.newCupAmount.value) || 300;
+  const amount = Number(E.newCupAmount.value);
   if (!name) { showToast("请输入水杯名称", false); return; }
-  userCups.push({ name, amount });
-  storage.saveCups(userCups);
+  if (!validWaterAmount(amount)) { E.newCupAmount.reportValidity(); showToast("水杯容量须为 10～5000 ml 的整数", false); return; }
+  const next = [...userCups, { name, amount }];
+  try { await storage.saveCups(next); }
+  catch (error) { showToast(toFriendlyError(error), false); return; }
+  userCups = next;
   renderCups();
   E.newCupName.value = "";
   E.newCupAmount.value = 300;
@@ -2100,11 +2184,13 @@ function addCustomCup() {
   showToast(`已添加 "${name}"`, false);
 }
 
-function deleteCup(idx) {
+async function deleteCup(idx) {
   if (userCups.length <= 1) return;
   const cup = userCups[idx];
-  userCups.splice(idx, 1);
-  storage.saveCups(userCups);
+  const next = userCups.filter((_, index) => index !== idx);
+  try { await storage.saveCups(next); }
+  catch (error) { showToast(toFriendlyError(error), false); return; }
+  userCups = next;
   renderCups();
   openCupEditor();
   showToast(`已删除 "${cup.name}"`, false);
@@ -2291,13 +2377,13 @@ async function renderStatsChart(period) {
   const medRates = dayData.map(d => {
     const items = getFullList("medicine").filter(s => isItemActiveOnDay(s.schedule || "everyday", isWeekday(d.dateKey), d.isWorkout));
     if (items.length === 0) return 100;
-    const done = items.filter(s => (d.medRecs.find(r => r.name === s.name)?.count || 0) >= (s.targetCount || 1)).length;
+    const done = items.filter(s => (d.medRecs.find(r => planMatchesRecord(s, r))?.count || 0) >= (s.targetCount || 1)).length;
     return Math.round((done / items.length) * 100);
   });
   const suppRates = dayData.map(d => {
     const items = getFullList("supplement").filter(s => isItemActiveOnDay(s.schedule || "everyday", isWeekday(d.dateKey), d.isWorkout));
     if (items.length === 0) return 100;
-    const done = items.filter(s => (d.suppRecs.find(r => r.name === s.name)?.count || 0) >= (s.targetCount || 1)).length;
+    const done = items.filter(s => (d.suppRecs.find(r => planMatchesRecord(s, r))?.count || 0) >= (s.targetCount || 1)).length;
     return Math.round((done / items.length) * 100);
   });
 

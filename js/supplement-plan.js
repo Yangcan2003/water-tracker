@@ -8,3 +8,12 @@ export function enabledPlans(items) {
 }
 
 export const enabledSupplements = enabledPlans;
+
+export function normalizePlans(items, type) {
+  return items.map(item => item.id ? item : { ...item, id: `legacy:${type}:${item.name}`, legacyNames: [item.name] });
+}
+
+export function planMatchesRecord(item, record) {
+  if (record.planId) return record.planId === item.id;
+  return (item.legacyNames || (item.id ? [] : [item.name])).includes(record.name);
+}

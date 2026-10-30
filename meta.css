@@ -663,3 +663,26 @@ dialog form,
   .meal-photo-preview img { height: 80px; }
   .meal-entry-photos img { height: 100px; }
 }
+.record-date-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; padding: 10px 12px; background: var(--theme-surface); border: 1px solid var(--theme-line); border-radius: 16px; }
+.record-date-bar[hidden] { display: none; }
+.record-date-bar label { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: center; gap: 8px; font-size: 12px; }
+.record-date-bar input { min-width: 0; max-width: 128px; border: 0; color: var(--theme-text); background: transparent; font: inherit; }
+.record-date-bar button { border: 0; border-radius: 10px; padding: 10px; color: var(--theme-text); background: var(--theme-soft); }
+.record-date-bar button:disabled { opacity: .35; }
+.home-nutrition-remaining { display: block; grid-column: 1 / -1; font-size: 11px; line-height: 1.7; color: var(--theme-muted); border-top: 1px solid var(--theme-line); padding-top: 10px; text-align: left; }
+.backup-summary { font-weight: 650; line-height: 1.8; }
+#backupImportDialog { padding: 24px; border-radius: 26px; }
+#historyRecordEditor, #historyRecordEditor form { border-radius: 26px; }
+#backupImportDialog, #historyRecordEditor { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.backup-settings { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.6; margin: 18px 0; }
+.backup-settings input { flex: 0 0 auto; margin-top: 5px; }
+.history-editor-actions { display: flex; gap: 12px; align-items: center; margin-top: 20px; }
+.history-editor-actions .primary-button { flex: 1; }
+.history-editor-actions .text-button { color: var(--theme-accent); font-size: 13px; }
+#historyRecordEditor label { display: block; font-size: 13px; margin-top: 12px; }
+#historyRecordEditor label[hidden] { display: none; }
+.history-edit-record { border: 0; padding: 8px 4px; color: var(--theme-accent); font-size: 12px; background: transparent; }
+.history-event-list .history-event { grid-template-columns: 44px 30px minmax(0, 1fr) auto; }
+.history-add-records { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.history-add-records p { flex-basis: 100%; font-size: 13px; color: var(--theme-muted); }
+.history-add-records button { border: 1px solid var(--theme-line); border-radius: 12px; background: var(--theme-surface); color: var(--theme-text); padding: 10px 12px; }

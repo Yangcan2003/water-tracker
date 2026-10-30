@@ -11,5 +11,7 @@ export function historyDetailHTML(day) {
       <span class="history-event-time">${event.date ? event.date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "当天"}</span>
       <span class="history-event-icon">${historyIcon(event.category)}</span>
       <span class="history-event-copy"><span><strong>${esc(event.title)}</strong><b>${esc(event.value)}</b></span>${event.detail ? `<small>${esc(event.detail)}</small>` : ""}</span>
-    </li>`).join("")}</ol>`;
+      ${event.id ? `<button class="history-edit-record" type="button" data-history-edit="${event.category}" data-record-id="${esc(event.id)}" aria-label="编辑${esc(event.title)}">编辑</button>` : ""}
+    </li>`).join("")}</ol>
+    <div class="history-add-records"><p>补录或管理这一天</p>${[["water", "饮水"], ["meal", "饮食"], ["medicine", "药物"], ["supplement", "补剂"], ["toilet", "如厕"], ["workout", "训练"]].map(([type, label]) => `<button type="button" data-history-add="${type}">＋ ${label}</button>`).join("")}</div>`;
 }

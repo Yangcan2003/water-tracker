@@ -5,6 +5,8 @@ import { normalizeFavoriteFood } from "../js/food-catalog.js";
 import { historyRange } from "../js/history-range.js";
 import { loadDaySnapshot } from "../js/day-loader.js";
 import { buildHealthContext } from "../js/assistant-context.js";
+import { accountCacheKey } from "../js/account-cache.js";
+import { parseBackup } from "../js/data-backup.js";
 
 const result = await build({
   stdin: { contents: 'export { storage } from "./js/storage.js"; export { mock } from "./tests/firebase-mock.mjs";', resolveDir: process.cwd() },
@@ -16,7 +18,7 @@ const result = await build({
 globalThis.window = new EventTarget();
 Object.defineProperty(globalThis, "navigator", { value: { onLine: true }, configurable: true });
 const local = new Map();
-globalThis.localStorage = { getItem: key => local.get(key) || null, setItem: (key, value) => local.set(key, value) };
+globalThis.localStorage = { getItem: key => local.get(key) || null, setItem: (key, value) => local.set(key, value), removeItem: key => local.delete(key) };
 const { storage, mock } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 const settleBodySync = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -91,6 +93,119 @@ beforeEach(() => {
   storage.setUser({ uid: "test" }, {});
 });
 
+test("account caches isolate profiles, logs and edits across sign-out, offline switches and cold restores", async () => {
+  const date = "2026-10-20";
+  await storage.updateProfile({ dailyGoal: 2800 });
+  const water = await storage.addWaterLog({ source: "A-only", amount: 600, logDate: date, recordedAt: new Date(date + "T10:00:00") });
+  await storage.saveMealRecord({ name: "A-only meal", photos: [], logDate: date, recordedAt: new Date(date + "T12:00:00") });
+  await settleBodySync();
+  storage.setUser(null, null);
+  assert.equal(storage.getCachedDay(date).water.length, 0);
+  assert.equal(storage.getCachedProfile().dailyGoal, 2000);
+  storage.setUser({ uid: "B" }, {});
+  assert.equal((await storage.getHistoryRange({ startDate: date, endDate: date })).length, 0);
+  navigator.onLine = false;
+  assert.equal(storage.getCachedDay(date).meal.length, 0);
+  assert.equal(await storage.updateWaterLogTime(water.id, new Date()), false);
+  assert.equal(mock.documents.has(`users/B/waterLogs/${water.id}`), false);
+  storage.setUser({ uid: "test" }, null);
+  assert.equal(storage.getCachedDay(date).water[0].amount, 600);
+  assert.equal(storage.getCachedProfile().dailyGoal, 2800);
+});
+
+test("legacy signed-in cache is migrated only to the matching account and remains recoverable", () => {
+  local.clear();
+  const legacy = storage._emptyData(); legacy.profile.dailyGoal = 3100;
+  localStorage.setItem("health_tracker_data", JSON.stringify(legacy));
+  localStorage.setItem("watertracker:lastUser", JSON.stringify({ email: "a@example.invalid" }));
+  storage.setUser({ uid: "B", email: "b@example.invalid" }, {});
+  assert.equal(storage.getCachedProfile().dailyGoal, 2000);
+  storage.setUser(null, null);
+  assert.equal(storage.getCachedProfile().dailyGoal, 2000);
+  storage.setUser({ uid: "A", email: "a@example.invalid" }, {});
+  assert.equal(storage.getCachedProfile().dailyGoal, 3100);
+  assert.ok(local.get("health_tracker_data"));
+  assert.ok(local.get(accountCacheKey("A")));
+});
+
+test("storage exhaustion preserves unsynced old records and rejects profile and cup changes", async () => {
+  storage.setUser(null, null);
+  const date = "2020-01-01";
+  await storage.addWaterLog({ source: "only copy", amount: 500, logDate: date, recordedAt: new Date(date + "T10:00:00") });
+  const before = local.get(storage.localKey), set = localStorage.setItem;
+  localStorage.setItem = () => { throw new Error("QuotaExceededError"); };
+  try {
+    await assert.rejects(storage.updateProfile({ dailyGoal: 3000 }), /存储空间/);
+    await assert.rejects(storage.saveCups([{ name: "杯", amount: 400 }]), /存储空间/);
+    assert.equal(local.get(storage.localKey), before);
+    assert.equal(storage.getCachedDay(date).water.length, 1);
+  } finally { localStorage.setItem = set; }
+});
+
+test("complete export includes cloud-only dates, images and current account data and rejects incomplete reads", async () => {
+  const date = "2020-01-01", photo = "data:image/jpeg;base64,YQ==";
+  mock.documents.set("users/test/waterLogs/remote", { source: "remote", amount: 700, logDate: date, recordedAt: new Date(date + "T10:00:00") });
+  mock.documents.set("users/test/mealLogs/remote-meal", { name: "meal", photos: [photo], mealType: "meal", logDate: date, recordedAt: new Date(date + "T12:00:00") });
+  const backup = await storage.createBackup();
+  assert.equal(backup.data.records[date].water[0].amount, 700);
+  assert.deepEqual(backup.data.records[date].meal[0].photos, [photo]);
+  assert.equal(JSON.stringify(backup).includes("recordWrites"), false);
+  assert.equal(parseBackup(backup).data.records[date].water[0].id, "remote");
+  mock.denied.add("mealLogs");
+  await assert.rejects(storage.createBackup());
+  mock.denied.clear(); navigator.onLine = false;
+  await assert.rejects(storage.createBackup(), /联网/);
+});
+
+test("backup restore previews duplicates and conflicts, preserves current records and is idempotent with photos", async () => {
+  storage.setUser(null, null);
+  const date = "2026-10-20", when = new Date(date + "T12:00:00");
+  await storage.addWaterLog({ source: "杯", amount: 400, logDate: date, recordedAt: when });
+  await storage.saveMealRecord({ name: "饭", photos: ["data:image/jpeg;base64,YQ=="], logDate: date, recordedAt: when });
+  const backup = await storage.createBackup();
+  assert.equal((await storage.previewBackupImport(backup)).duplicates, 2);
+  const conflict = structuredClone(backup); conflict.data.records[date].water[0].amount = 900;
+  assert.equal((await storage.previewBackupImport(conflict)).conflicts, 1);
+  await storage.restoreBackup(conflict);
+  assert.equal(storage.getCachedDay(date).water[0].amount, 400);
+  storage.setUser({ uid: "source" }, {});
+  await storage.mergeLocalToCloud();
+  storage.setUser({ uid: "new" }, {});
+  const restored = await storage.restoreBackup(backup);
+  assert.equal(restored.added, 2);
+  await settleBodySync();
+  assert.equal(storage.getCachedDay(date).water[0].amount, 400);
+  assert.deepEqual((await storage.getMealLogs(date))[0].photos, ["data:image/jpeg;base64,YQ=="]);
+  assert.equal((await storage.restoreBackup(backup)).added, 0);
+});
+
+test("invalid water values are rejected at the durable storage boundary", async () => {
+  for (const amount of [-100, 0, 9, 5001, NaN, Infinity, 10.5]) {
+    await assert.rejects(storage.addWaterLog({ amount, source: "杯", logDate: "2026-10-20", recordedAt: new Date() }), /容量/);
+    await assert.rejects(storage.saveCups([{ name: "杯", amount }]), /容量/);
+  }
+  assert.equal(storage.getCachedDay("2026-10-20").water.length, 0);
+});
+
+test("restore failures preserve the original dataset and account changes cannot land imported images in another account", async () => {
+  storage.setUser(null, null);
+  const date = "2026-10-20";
+  const backup = { format: "health-tracker-backup", version: 2, data: { profile: {}, records: { [date]: {
+    water: [{ id: "import-water", source: "杯", amount: 400, recordedAt: date + "T10:00:00" }],
+    meal: [{ id: "import-meal", name: "饭", photos: ["data:image/jpeg;base64,YQ=="], recordedAt: date + "T12:00:00" }],
+  } } } };
+  const before = local.get(storage.localKey), set = localStorage.setItem;
+  localStorage.setItem = () => { throw new Error("QuotaExceededError"); };
+  try { await assert.rejects(storage.restoreBackup(backup), /存储空间/); assert.equal(local.get(storage.localKey), before); }
+  finally { localStorage.setItem = set; }
+  const put = storage.mealPhotos.put;
+  storage.mealPhotos.put = async photos => { storage.setUser({ uid: "switched" }, {}); return put(photos); };
+  await assert.rejects(storage.restoreBackup(backup), /账户已切换/);
+  assert.equal(storage.getCachedDay(date).water.length, 0);
+  assert.equal(storage.getCachedDay(date).meal.length, 0);
+  storage.mealPhotos.put = put;
+});
+
 test("workout marks store only the chosen part and retain explicit rest across local reload and guest upload", async () => {
   storage.setUser(null, null);
   const date = "2026-10-16";
@@ -159,7 +274,7 @@ test("a failed meal read is specific, survives unrelated success, and clears aft
   assert.equal(storage.syncStatus.state, "synced");
 });
 
-test("body history survives repeated saves, backfills, export and old daily-record cleanup", async () => {
+test("body history survives repeated saves, backfills and serialization", async () => {
   storage.setUser(null, null);
   const first = await storage.addBodyMeasurement({ date: "2025-01-01", height: 175, weight: 68 });
   const second = await storage.addBodyMeasurement({ date: "2026-10-01", weight: 65.5, bodyFat: 20 });
@@ -167,9 +282,9 @@ test("body history survives repeated saves, backfills, export and old daily-reco
   assert.notEqual(second.id, third.id);
   assert.equal(Object.keys(storage.getCachedBodyMeasurements()).length, 3);
   assert.equal(storage.getCachedBodyMeasurements()[first.id].height, 175);
-  assert.ok(local.get("health_tracker_data").includes(second.id));
-  const pruned = storage._pruneOldRecords(storage._loadLocal(), 90);
-  assert.equal(Object.keys(pruned.bodyMeasurements.__local__).length, 3);
+  assert.ok(local.get(storage.localKey).includes(second.id));
+  const restored = JSON.parse(local.get(storage.localKey));
+  assert.equal(Object.keys(restored.bodyMeasurements.__local__).length, 3);
   await assert.rejects(storage.addBodyMeasurement({ date: "2026-10-01" }));
   assert.equal(Object.keys(storage.getCachedBodyMeasurements()).length, 3);
 });
@@ -527,7 +642,7 @@ test("an incomplete Firestore cache cannot be saved as a complete month snapshot
 test("meal photos are stored separately, sync with the record, and survive cloud/offline reads", async () => {
   const photo = "data:image/jpeg;base64,YQ==";
   const record = await storage.saveMealRecord({ mealType: "lunch", name: "", note: "", photos: [photo], logDate: "2026-10-12", recordedAt: new Date("2026-10-12T04:25:00Z") });
-  assert.equal(local.get("health_tracker_data").includes('"photos":'), false);
+  assert.equal(local.get(storage.localKey).includes('"photos":'), false);
   await settleBodySync();
   assert.deepEqual(mock.documents.get(`users/test/mealLogs/${record.id}`).photos, [photo]);
   assert.deepEqual((await storage.getLogs("meal", "2026-10-12"))[0].photos, [photo]);

@@ -82,7 +82,7 @@ function eventDate(value) {
 
 export function historyDayEvents(day) {
   const events = [];
-  const add = (category, record, title, value, detail = "") => events.push({ category, title, value, detail, date: eventDate(record.recordedAt) });
+  const add = (category, record, title, value, detail = "") => events.push({ category, id: record.id || (category === "workout" ? day.dateKey : ""), title, value, detail, date: eventDate(record.recordedAt) });
   for (const record of day.waterRecs || []) add("water", record, record.source || "饮水", `${Number(record.amount) || 0} ml`);
   for (const record of day.mealRecs || []) add("meal", record, record.name || "饮食", "饮食记录", record.note || "");
   for (const [category, records] of [["medicine", day.medRecs], ["supplement", day.suppRecs]]) {

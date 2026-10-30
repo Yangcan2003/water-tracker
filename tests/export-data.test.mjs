@@ -19,7 +19,8 @@ function setup({ native = true, share = async () => ({ activityType: "saveToFile
     Directory: { Cache: "CACHE" }, Encoding: { UTF8: "utf8" },
     Share: { share: async options => { calls.shares.push(options); return share(options); } },
     localStorage: { getItem: () => JSON.stringify({ records: { "2026-10-15": { meal: [{ id: "meal-1" }] } } }) },
-    storage: { readMealPhotos: async () => ["data:image/jpeg;base64,test"] },
+    storage: { createBackup: async () => ({ format: "health-tracker-backup", version: 2, data: { records: { "2026-10-15": { meal: [{ id: "meal-1", photos: ["data:image/jpeg;base64,test"] }] } } } }) },
+    toFriendlyError: error => error.message,
     toDateKey: () => "2026-10-15",
     showToast: message => calls.toasts.push(message),
     E: { profileDialog: { close: () => calls.closed++ } },
@@ -54,7 +55,7 @@ test("export waits for native completion before reporting success", async () => 
   assert.equal(calls.closed, 1);
   assert.equal(calls.downloads, 0);
   const data = JSON.parse(calls.writes[0].data);
-  assert.deepEqual(data.records["2026-10-15"].meal[0].photos, ["data:image/jpeg;base64,test"]);
+  assert.deepEqual(data.data.records["2026-10-15"].meal[0].photos, ["data:image/jpeg;base64,test"]);
 });
 
 for (const failure of ["write", "share"]) {
@@ -62,7 +63,7 @@ for (const failure of ["write", "share"]) {
     const fail = async () => { throw new Error("Export failed"); };
     const { calls, run } = setup(failure === "write" ? { write: fail } : { share: fail });
     await run();
-    assert.deepEqual(calls.toasts, ["导出失败"]);
+    assert.match(calls.toasts[0], /^导出失败：/);
     assert.equal(calls.downloads, 0);
     assert.equal(calls.closed, 0);
     if (failure === "write") assert.equal(calls.shares.length, 0);
