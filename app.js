@@ -88,7 +88,7 @@ function $(sel) { return document.querySelector(sel); }
   "currentAmount","goalAmount","progressPercent","progressBar","progressMessage",
   "waterFill","waterWave","historyList","recordCount",
   "goalDialog","goalForm","goalInput",
-  "recordDateBar","recordDateInput","recordDateLabel","recordPreviousDay","recordNextDay","recordToday","dashboardNutritionRemaining",
+  "recordDateBar","recordDateInput","recordDateLabel","recordDateCaption","recordPreviousDay","recordNextDay","recordToday","dashboardNutritionRemaining",
   "recordTimeDialog","recordTimeForm","recordTimeInput","recordTimeSaveButton",
   "customButton","customDialog","customForm","customName","customAmount",
   "toast","toastText","undoButton",
@@ -296,7 +296,10 @@ E.assistantTab.addEventListener("click", () => switchMain("assistant"));
 E.historyTab.addEventListener("click", () => switchMain("history"));
 E.accountTab.addEventListener("click", () => switchMain("account"));
 E.detailBackButton.addEventListener("click", () => switchMain("overview"));
-E.recordDateInput.addEventListener("change", () => changeRecordDate(E.recordDateInput.value));
+E.recordDateInput.addEventListener("change", () => {
+  changeRecordDate(E.recordDateInput.value);
+  renderRecordDate();
+});
 E.recordToday.addEventListener("click", () => changeRecordDate(toDateKey(new Date())));
 for (const [button, offset] of [[E.recordPreviousDay, -1], [E.recordNextDay, 1]]) button.addEventListener("click", () => {
   const date = fromDateKey(selectedDate); date.setDate(date.getDate() + offset); changeRecordDate(toDateKey(date));
@@ -1207,11 +1210,17 @@ function ensureMealsToday() {
   lastCalendarDay = today;
 }
 function renderRecordDate() {
-  E.recordDateInput.max = toDateKey(new Date());
+  const today = toDateKey(new Date()), date = fromDateKey(selectedDate), isToday = selectedDate === today;
+  const label = date.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+  const weekday = date.toLocaleDateString("zh-CN", { weekday: "short" });
+  E.recordDateInput.max = today;
   E.recordDateInput.value = selectedDate;
-  E.recordDateLabel.textContent = selectedDate === toDateKey(new Date()) ? "今天" : fromDateKey(selectedDate).toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
-  E.recordNextDay.disabled = selectedDate >= toDateKey(new Date());
-  E.recordToday.hidden = selectedDate === toDateKey(new Date());
+  E.recordDateInput.setAttribute("aria-label", `选择记录日期，当前为${date.getFullYear()}年${label}，${weekday}${isToday ? "，今天" : ""}`);
+  E.recordDateLabel.textContent = label;
+  E.recordDateCaption.textContent = `${date.getFullYear()}年 · ${weekday}`;
+  E.recordNextDay.disabled = selectedDate >= today;
+  E.recordToday.disabled = isToday;
+  E.recordToday.textContent = isToday ? "今天" : "回今天";
 }
 function recordTimeForDate(dateKey) {
   const now = new Date(), date = fromDateKey(dateKey);
