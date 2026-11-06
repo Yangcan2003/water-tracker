@@ -25,7 +25,8 @@ test("entry rendering preserves the recorded time, escapes user text/IDs and sup
   assert.match(html, /&lt;img/);
   assert.match(html, /&quot; onclick=&quot;bad/);
   assert.doesNotMatch(html, /<script>|javascript:alert/);
-  assert.equal((html.match(/data-meal-photo=/g) || []).length, 1);
+  // The single safe photo is available in the thumbnail and expanded gallery.
+  assert.equal((html.match(/data-meal-photo=/g) || []).length, 2);
   const photoOnly = mealEntryHTML({ id: "photo", mealType: "dinner", photos: [photo], recordedAt: new Date() });
   assert.match(photoOnly, /食物照片/);
   const text = mealEntryHTML({ id: "text", mealType: "snack", name: "苹果", recordedAt: new Date() });

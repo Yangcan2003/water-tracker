@@ -27,6 +27,7 @@ export function createNutritionGoalsPage({ storage, showToast }) {
     }
     if (nextTotals) { totals = nextTotals; loading = nextLoading; }
     const goal = currentGoal(), targets = nutritionTargets(goal), daily = dailyNutritionGoals(goal);
+    el("mealMacroGoals").hidden = !goal;
     for (const { key, id, label, unit, kind } of DAILY_NUTRIENT_GOALS) {
       el(`accountTarget${id}`).textContent = format(daily[key]);
       el(`mealTarget${id}`).textContent = format(daily[key]);

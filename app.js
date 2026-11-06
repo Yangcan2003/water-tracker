@@ -128,13 +128,14 @@ function $(sel) { return document.querySelector(sel); }
   "overviewMealCard","overviewMealValue","overviewWorkoutCard","overviewWorkoutValue",
   "mealDayList",
   "mealDialog","mealForm","mealNameInput",
-  "mealQuickAdd","mealDialogTitle","mealTimeInput","mealTimeHint","mealSaveButton","mealDraftStatus","mealDraftDiscard","mealCloseButton",
+  "mealDialogTitle","mealTimeInput","mealTimeHint","mealSaveButton","mealDraftStatus","mealDraftDiscard","mealCloseButton",
   "mealPhotoPreview","mealPhotoCount","mealPhotoButton","mealCameraButton","mealPhotoInput","mealCameraInput","mealPhotoMessage",
   "mealPhotoViewer","mealPhotoLarge","mealEmptyState",
   "mealAnalyzeButton","mealAnalyzeLabel","mealNutritionStatus","mealNutritionResult","mealNutritionAssumption","mealNutritionClear","mealAIConnect",
   "mealKcalInput","mealCarbsInput","mealProteinInput","mealFatInput",
   "mealListCount","mealDayStatus",
   "mealDailyKcal","mealDailyCarbs","mealDailyProtein","mealDailyFat","mealDailyCoverage","mealDailyNote",
+  "mealDailyNutrition","mealDailySummary","mealNutritionMetrics","mealNutritionToggleLabel","mealRecordsHeader","mealRecordsTitle","mealEmptyTitle","mealDailyHeading",
   "mealQuickCamera","mealQuickText","mealActionsDialog","mealActionsTitle","mealActionsSummary","mealActionEdit","mealActionRepeat","mealActionDelete","mealDeleteLabel",
   "workoutDateLabel","workoutCurrentStatus","workoutClear",
   "dashboardWaterValue","dashboardWaterSub","dashboardWaterRing",
@@ -383,7 +384,12 @@ E.medicineWorkoutToggle.addEventListener("click", () => toggleWorkoutDay());
 
 if (E.mealForm) E.mealForm.addEventListener("submit", handleMealSubmit);
 document.querySelectorAll("[data-meal-icon]").forEach(element => { element.innerHTML = mealIcon(element.dataset.mealIcon); });
-E.mealQuickAdd?.addEventListener("click", () => openMealDialog());
+E.mealDailySummary.addEventListener("click", event => {
+  if (E.mealDailySummary.getAttribute("aria-disabled") === "true") event.preventDefault();
+});
+E.mealDailyNutrition.addEventListener("toggle", () => {
+  if (E.mealDailyNutrition.dataset.state === "ready") E.mealNutritionToggleLabel.textContent = E.mealDailyNutrition.open ? "收起" : "详情";
+});
 E.mealQuickCamera?.addEventListener("click", () => openMealDialog("meal", null, { mode: "camera" }));
 E.mealQuickText?.addEventListener("click", () => openMealDialog("meal", null, { mode: "text" }));
 E.mealAnalyzeButton?.addEventListener("click", handleMealAnalysis);
@@ -1494,13 +1500,28 @@ function renderMeals() {
   const rows = mealRecords.filter(record => !record.logDate || record.logDate === selectedDate)
     .sort((a, b) => mealRecordDate(b) - mealRecordDate(a));
   const totals = dailyMealNutrition(rows);
+  const isToday = selectedDate === toDateKey(new Date());
+  const viewKey = `${storage.sync.generation}:${selectedDate}`;
+  const state = mealDayLoading ? "loading" : rows.length ? "ready" : "empty";
+  if (E.mealDailyNutrition.dataset.viewKey !== viewKey || state !== "ready") E.mealDailyNutrition.open = false;
+  E.mealDailyNutrition.dataset.viewKey = viewKey;
+  E.mealDailyNutrition.dataset.state = state;
+  E.mealDailySummary.setAttribute("aria-disabled", String(state !== "ready"));
+  E.mealDailySummary.tabIndex = state === "ready" ? 0 : -1;
+  E.mealNutritionMetrics.hidden = E.mealDailyCoverage.hidden = state !== "ready";
+  E.mealNutritionToggleLabel.textContent = state === "loading" ? "正在读取…" : state === "empty" ? "记录后查看" : E.mealDailyNutrition.open ? "收起" : "详情";
+  E.mealRecordsHeader.hidden = state === "empty";
+  E.mealRecordsTitle.textContent = isToday ? "今日饮食" : "当天饮食";
+  E.mealDailyHeading.textContent = isToday ? "今日营养" : "当天营养";
+  E.mealEmptyTitle.textContent = isToday ? "今天还没记录饮食" : "这一天还没记录饮食";
   nutritionGoalsPage.render(totals, mealDayLoading);
   [["mealDailyKcal", "kcal"], ["mealDailyCarbs", "carbsG"], ["mealDailyProtein", "proteinG"], ["mealDailyFat", "fatG"]].forEach(([id, key]) => {
     E[id].textContent = mealDayLoading || totals[key] === null ? "—" : totals[key].toLocaleString("zh-CN", { maximumFractionDigits: 1 });
   });
   document.getElementById("mealDailyMore").hidden = mealDayLoading || !totals.entries;
   document.getElementById("mealDailyExtra").innerHTML = EXTRA_NUTRIENTS.filter(field => !["fiberG", "sodiumMg"].includes(field.key)).map(field => `<div><dt>${field.label}</dt><dd>${totals[field.key] == null ? "—" : totals[field.key]} <small>${field.unit}</small><small> · ${totals.nutrientCoverage[field.key]} / ${totals.entries} 条</small></dd></div>`).join("");
-  E.mealDailyCoverage.textContent = mealDayLoading ? "正在读取…" : !totals.entries ? "尚无记录" : `已计入 ${totals.counted} / ${totals.entries} 条`;
+  const nutritionSource = totals.missing ? "仅合计已知数值" : rows.every(record => record.nutrition?.source !== "manual") ? "AI 估算" : "营养合计";
+  E.mealDailyCoverage.textContent = `已计入 ${totals.counted} / ${totals.entries} 条 · ${totals.counted ? nutritionSource : "营养待补充"}`;
   E.mealDailyNote.textContent = mealDayLoading ? "正在读取已保存的营养记录…" : !totals.entries ? "添加饮食并识别营养后，显示当天的摄入合计。"
     : !totals.counted ? "目前记录尚无营养数据；可在编辑记录中 AI 识别。"
     : totals.missing ? `还有 ${totals.missing} 条记录缺少营养数据，当前仅汇总已知数值。` : "按已保存的营养估算合计，可在每餐中调整。";
@@ -1508,7 +1529,7 @@ function renderMeals() {
   E.mealDayList.hidden = mealDayLoading;
   E.mealEmptyState.hidden = mealDayLoading || rows.length > 0;
   E.mealDayList.setAttribute("aria-busy", String(mealDayLoading));
-  [E.mealQuickAdd, E.mealQuickCamera, E.mealQuickText].forEach(button => { button.disabled = mealDayLoading; });
+  [E.mealQuickCamera, E.mealQuickText].forEach(button => { button.disabled = mealDayLoading; });
   E.mealListCount.textContent = mealDayLoading ? "正在读取…" : `${rows.length} 条记录`;
   E.mealDayList.innerHTML = rows.map(mealEntryHTML).join("");
 }
