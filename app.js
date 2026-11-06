@@ -13,6 +13,7 @@ import { toDateKey, fromDateKey, isWeekday, esc, toFriendlyError, toTimeValue, t
 import { storage } from "./js/storage.js";
 import { loadDaySnapshot } from "./js/day-loader.js";
 import { recordWeekView } from "./js/record-date.js";
+import { MealDraftStore, mealDraftKey } from "./js/meal-drafts.js";
 import { createBodyMeasurementsPage } from "./js/body-measurements-page.js";
 import { createNutritionGoalsPage } from "./js/nutrition-goals-page.js";
 import { createFoodCatalogPage } from "./js/food-catalog-page.js";
@@ -64,6 +65,8 @@ let historyDayData = [];
 let historyViewMode = "overview";
 let syncRetryInProgress = false;
 let mealDraft = null, mealSelectionVersion = 0, mealSaving = false;
+const mealDraftStore = new MealDraftStore();
+let mealDraftSaveTimer = null;
 let mealDayLoading = false, mealActionId = null, mealActionBusy = false;
 let recordTimeDraft = null;
 
@@ -125,7 +128,7 @@ function $(sel) { return document.querySelector(sel); }
   "overviewMealCard","overviewMealValue","overviewWorkoutCard","overviewWorkoutValue",
   "mealDayList",
   "mealDialog","mealForm","mealNameInput",
-  "mealQuickAdd","mealDialogTitle","mealTimeInput","mealTimeHint","mealSaveButton",
+  "mealQuickAdd","mealDialogTitle","mealTimeInput","mealTimeHint","mealSaveButton","mealDraftStatus","mealDraftDiscard","mealCloseButton",
   "mealPhotoPreview","mealPhotoCount","mealPhotoButton","mealCameraButton","mealPhotoInput","mealCameraInput","mealPhotoMessage",
   "mealPhotoViewer","mealPhotoLarge","mealEmptyState",
   "mealAnalyzeButton","mealAnalyzeLabel","mealNutritionStatus","mealNutritionResult","mealNutritionAssumption","mealNutritionClear","mealAIConnect",
@@ -288,6 +291,7 @@ E.historyContent.addEventListener("click", (event) => {
   if (!dlg) return;
   dlg.addEventListener("click", (event) => {
     const b = dlg.getBoundingClientRect();
+    if (dlg === E.mealDialog && (mealSaving || mealDraft?.discarding)) return;
     if (event.target === dlg && (event.clientX < b.left || event.clientX > b.right || event.clientY < b.top || event.clientY > b.bottom)) dlg.close();
   });
 });
@@ -398,6 +402,7 @@ E.mealAIConnect?.addEventListener("click", async () => {
 });
 [...["Kcal", "Carbs", "Protein", "Fat"].map(name => `meal${name}Input`), ...EXTRA_NUTRIENTS.map(field => `mealExtra${field.key}`)].forEach(id => document.getElementById(id)?.addEventListener("input", () => {
   if (mealDraft?.nutrition) mealDraft.nutrition.source = "manual";
+  queueMealDraftSave();
 }));
 document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureMealsToday(); });
 setInterval(ensureMealsToday, 60000);
@@ -448,15 +453,18 @@ E.mealActionDelete?.addEventListener("click", async () => {
 E.mealPhotoButton?.addEventListener("click", () => E.mealPhotoInput.click());
 E.mealCameraButton?.addEventListener("click", () => E.mealCameraInput.click());
 [E.mealPhotoInput, E.mealCameraInput].forEach(input => input?.addEventListener("change", handleMealPhotos));
+E.mealNameInput.addEventListener("beforeinput", event => { if (mealDraft?.loading) event.preventDefault(); });
 E.mealNameInput?.addEventListener("input", () => {
   if (E.mealNameInput.value.trim()) captureMealTime();
   if (mealDraft?.nutrition || mealDraft?.analyzing) invalidateMealNutrition();
   else renderMealPhotoDraft();
+  queueMealDraftSave();
 });
 E.mealTimeInput?.addEventListener("input", () => {
   if (!mealDraft) return;
   mealDraft.clock.setTime(E.mealTimeInput.value);
   E.mealTimeHint.textContent = "已手动设置吃饭时间。";
+  queueMealDraftSave();
 });
 E.mealPhotoPreview?.addEventListener("click", event => {
   const button = event.target.closest("[data-remove-photo]");
@@ -464,8 +472,34 @@ E.mealPhotoPreview?.addEventListener("click", event => {
   mealDraft.photos.splice(Number(button.dataset.removePhoto), 1);
   invalidateMealNutrition();
   renderMealPhotoDraft();
+  queueMealDraftSave();
 });
-E.mealDialog?.addEventListener("close", () => { mealEditorKeyboard.close(); mealSelectionVersion++; mealDraft?.analysisController?.abort(); mealDraft = null; });
+E.mealDraftDiscard.addEventListener("click", async () => {
+  const draft = mealDraft;
+  if (!draft || mealSaving || draft.loading) return;
+  if (!draft.confirmDiscard) { draft.confirmDiscard = true; E.mealDraftDiscard.textContent = "确认放弃"; return; }
+  const snapshot = mealDraftSnapshot(draft);
+  draft.discarding = true; renderMealPhotoDraft();
+  clearTimeout(mealDraftSaveTimer);
+  try {
+    if (draft.localOnly) mealDraftStore.remember(draft.key, null);
+    else await mealDraftStore.remove(draft.key);
+    draft.discarded = true;
+    if (mealDraft === draft) E.mealDialog.close();
+  } catch {
+    mealDraftStore.remember(draft.key, snapshot);
+    if (mealDraft === draft) E.mealDraftStatus.textContent = "未能清除草稿，内容已保留，请重试";
+  } finally { draft.discarding = false; if (mealDraft === draft) renderMealPhotoDraft(); }
+});
+E.mealCloseButton.addEventListener("click", () => E.mealDialog.close());
+E.mealDialog.addEventListener("cancel", event => { if (mealSaving || mealDraft?.discarding) event.preventDefault(); });
+E.mealDialog?.addEventListener("close", () => {
+  clearTimeout(mealDraftSaveTimer);
+  if (mealDraft && !mealDraft.loading && !mealDraft.discarded && !mealDraft.saved) void persistMealDraft(mealDraft);
+  mealEditorKeyboard.close(); mealSelectionVersion++; mealDraft?.analysisController?.abort(); mealDraft = null;
+});
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushMealDraft(); });
+window.addEventListener("pagehide", flushMealDraft);
 document.querySelectorAll("[data-workout-preset]").forEach(button => {
   button.addEventListener("click", () => markWorkoutDay(button.dataset.workoutPreset));
 });
@@ -1250,6 +1284,62 @@ function openMealActions(id) {
   E.mealActionsDialog.showModal();
 }
 
+function mealDraftSnapshot(draft) {
+  return { version: 1, dateKey: draft.clock.dateKey, name: E.mealNameInput.value, photos: [...draft.photos],
+    nutrition: draft.nutrition, nutritionValues: Object.fromEntries(MEAL_NUTRITION_INPUTS.map((id, index) => [NUTRITION_FIELDS[index].key, document.getElementById(id).value])),
+    time: draft.clock.time, captured: draft.clock.captured, manual: draft.clock.manual };
+}
+function queueMealDraftSave() {
+  const draft = mealDraft;
+  if (!draft || draft.loading || draft.saved || draft.discarded) return;
+  draft.dirty = true; draft.revision++;
+  draft.confirmDiscard = false; E.mealDraftDiscard.textContent = "放弃草稿";
+  E.mealDraftDiscard.hidden = false;
+  E.mealDraftStatus.textContent = draft.localOnly ? "草稿仅暂存于本次使用，退出 App 前请保存记录" : "正在暂存草稿…";
+  clearTimeout(mealDraftSaveTimer);
+  mealDraftSaveTimer = setTimeout(() => { if (mealDraft === draft) void persistMealDraft(draft); }, 250);
+}
+async function persistMealDraft(draft) {
+  if (!draft.dirty || draft.loading || draft.saved || draft.discarded) return;
+  const snapshot = mealDraftSnapshot(draft), revision = draft.revision;
+  const empty = !draft.id && !snapshot.name.trim() && !snapshot.photos.length;
+  if (draft.localOnly) { mealDraftStore.remember(draft.key, empty ? null : snapshot); return; }
+  try {
+    if (empty) await mealDraftStore.remove(draft.key);
+    else await mealDraftStore.save(draft.key, snapshot);
+    if (mealDraft === draft && revision === draft.revision) E.mealDraftStatus.textContent = empty ? "关闭后可继续编辑" : "草稿已保存在本机";
+  } catch {
+    if (mealDraft === draft && revision === draft.revision) E.mealDraftStatus.textContent = "草稿仅暂存于本次使用，退出 App 前请保存记录";
+  }
+}
+function flushMealDraft() {
+  clearTimeout(mealDraftSaveTimer);
+  if (mealDraft) void persistMealDraft(mealDraft);
+}
+async function restoreMealDraft(draft) {
+  try {
+    const saved = await mealDraftStore.get(draft.key);
+    if (mealDraft !== draft || draft.generation !== storage.sync.generation) return;
+    if (saved) {
+      draft.photos = saved.photos; draft.nutrition = saved.nutrition;
+      Object.assign(draft.clock, { time: saved.time, captured: saved.captured, manual: saved.manual });
+      E.mealNameInput.value = saved.name; E.mealTimeInput.value = saved.time;
+      renderMealNutrition();
+      if (saved.nutrition) MEAL_NUTRITION_INPUTS.forEach((id, index) => { document.getElementById(id).value = saved.nutritionValues[NUTRITION_FIELDS[index].key]; });
+      draft.dirty = true;
+      E.mealDraftDiscard.hidden = false;
+      E.mealDraftStatus.textContent = mealDraftStore.isTemporary(draft.key) ? "草稿仅暂存于本次使用，退出 App 前请保存记录" : "已恢复上次草稿 · 仅保存在本机";
+      E.mealTimeHint.textContent = "已保留草稿中的吃饭时间，可手动修改。";
+    } else E.mealDraftStatus.textContent = "关闭后可继续编辑";
+  } catch {
+    if (mealDraft !== draft) return;
+    draft.localOnly = true;
+    E.mealDraftStatus.textContent = "草稿仅暂存于本次使用，退出 App 前请保存记录";
+  } finally {
+    if (mealDraft === draft) { draft.loading = false; renderMealPhotoDraft(); }
+  }
+}
+
 function openMealDialog(type = "meal", record = null, options = {}) {
   if (mealSaving || mealDayLoading) return;
   mealSelectionVersion++;
@@ -1257,7 +1347,9 @@ function openMealDialog(type = "meal", record = null, options = {}) {
   const date = editing ? record.logDate || selectedDate : selectedDate;
   mealDraft = { id: editing ? record.id : null, photos: [...(record?.photos || [])], processing: false,
     nutrition: normalizeMealNutrition(record?.nutrition), nutritionVersion: 0, analyzing: false,
-    generation: storage.sync.generation, clock: new MealTimeDraft(date, editing ? toJSDate(record.recordedAt) : null) };
+    generation: storage.sync.generation, clock: new MealTimeDraft(date, editing ? toJSDate(record.recordedAt) : null),
+    key: mealDraftKey(storage.localKey, date, editing ? record.id : null, options.repeat ? record.id : null),
+    dirty: false, revision: 0, loading: true };
   if (options.repeat) mealDraft.clock.capture();
   // Keep older notes editable after consolidating the two text fields.
   E.mealNameInput.value = [record?.name, record?.note].filter(value => value?.trim()).join("\n");
@@ -1267,12 +1359,16 @@ function openMealDialog(type = "meal", record = null, options = {}) {
   E.mealPhotoMessage.textContent = "最多 3 张，照片和文字都可以单独保存。";
   E.mealPhotoInput.value = E.mealCameraInput.value = "";
   E.mealAIConnect.hidden = true;
+  E.mealDraftDiscard.hidden = true; E.mealDraftDiscard.textContent = "放弃草稿";
+  E.mealDraftStatus.textContent = "正在读取草稿…";
   renderMealNutrition();
   renderMealPhotoDraft();
   const body = E.mealDialog.querySelector(".diary-editor-body");
   E.mealDialog.showModal();
   body.scrollTop = 0;
   mealEditorKeyboard.open();
+  const draft = mealDraft;
+  draft.ready = restoreMealDraft(draft);
   if (options.mode === "camera") E.mealCameraInput.click();
   else if (options.mode === "text") E.mealNameInput.focus({ preventScroll: true });
 }
@@ -1289,10 +1385,14 @@ function renderMealPhotoDraft() {
   E.mealPhotoCount.textContent = `${mealDraft.photos.length} / ${MAX_MEAL_PHOTOS}`;
   E.mealPhotoPreview.innerHTML = mealDraft.photos.map((photo, index) => `<figure><img src="${photo}" alt="食物照片 ${index + 1}" /><button type="button" data-remove-photo="${index}" aria-label="移除第 ${index + 1} 张照片">×</button></figure>`).join("");
   E.mealPhotoPreview.hidden = !mealDraft.photos.length;
-  const busy = mealDraft.processing || mealDraft.analyzing || mealDraft.connecting || mealSaving;
+  const busy = mealDraft.loading || mealDraft.discarding || mealDraft.processing || mealDraft.analyzing || mealDraft.connecting || mealSaving;
   E.mealCameraButton.disabled = E.mealPhotoButton.disabled = busy || mealDraft.photos.length >= MAX_MEAL_PHOTOS;
   E.mealSaveButton.disabled = busy;
-  [E.mealNameInput, E.mealTimeInput].forEach(input => { input.disabled = mealSaving; });
+  E.mealNameInput.disabled = mealSaving || mealDraft.discarding;
+  E.mealNameInput.setAttribute("aria-busy", String(mealDraft.loading));
+  E.mealTimeInput.disabled = mealSaving || mealDraft.loading || mealDraft.discarding;
+  E.mealCloseButton.disabled = mealSaving || mealDraft.discarding;
+  E.mealDraftDiscard.disabled = busy;
   E.mealAnalyzeButton.disabled = busy || !(mealDraft.photos.length || E.mealNameInput.value.trim());
   E.mealAnalyzeLabel.textContent = mealDraft.analyzing ? "正在识别…" : mealDraft.nutrition ? "重新识别热量与营养" : "识别热量与营养";
   for (const id of MEAL_NUTRITION_INPUTS) document.getElementById(id).disabled = busy || !mealDraft.nutrition;
@@ -1305,6 +1405,8 @@ async function handleMealPhotos(event) {
   event.target.value = "";
   if (!mealDraft || !files.length || mealSaving || mealDraft.processing) return;
   const draft = mealDraft, version = mealSelectionVersion, addedAt = new Date();
+  await draft.ready;
+  if (draft !== mealDraft || version !== mealSelectionVersion) return;
   invalidateMealNutrition();
   const remaining = MAX_MEAL_PHOTOS - draft.photos.length;
   draft.processing = true;
@@ -1319,6 +1421,7 @@ async function handleMealPhotos(event) {
       draft.photos.push(photo);
       added++;
       captureMealTime(addedAt);
+      queueMealDraftSave();
     } catch (error) { errors.push(error.message); }
   }
   if (version !== mealSelectionVersion || draft !== mealDraft) return;
@@ -1329,7 +1432,7 @@ async function handleMealPhotos(event) {
 
 async function handleMealSubmit(event) {
   event.preventDefault();
-  if (!mealDraft || mealSaving || mealDraft.processing || mealDraft.analyzing || mealDraft.connecting || !E.mealForm.reportValidity()) return;
+  if (!mealDraft || mealDraft.loading || mealSaving || mealDraft.processing || mealDraft.analyzing || mealDraft.connecting || !E.mealForm.reportValidity()) return;
   const draft = mealDraft;
   if (draft.generation !== storage.sync.generation) { E.mealDialog.close(); return; }
   const name = E.mealNameInput.value.trim();
@@ -1344,6 +1447,12 @@ async function handleMealSubmit(event) {
   try {
     const saved = await storage.saveMealRecord(meal, draft.id);
     if (draft.generation !== storage.sync.generation) return;
+    draft.saved = true;
+    clearTimeout(mealDraftSaveTimer);
+    let draftCleanupFailed = false;
+    try { await mealDraftStore.remove(draft.key); }
+    catch { draftCleanupFailed = true; }
+    if (draft.generation !== storage.sync.generation) return;
     if (selectedDate === meal.logDate) {
       const index = mealRecords.findIndex(record => record.id === saved.id);
       if (index < 0) mealRecords.push(saved); else mealRecords[index] = saved;
@@ -1352,7 +1461,7 @@ async function handleMealSubmit(event) {
     }
     E.mealDialog.close();
     nativeHaptic("light");
-    showToast(draft.id ? "饮食记录已修改" : "饮食记录已保存", false);
+    showToast(draftCleanupFailed ? "饮食已保存，但本机草稿清理失败，请稍后检查" : draft.id ? "饮食记录已修改" : "饮食记录已保存", false);
   } catch (e) { showToast(toFriendlyError(e), false); }
   finally { mealSaving = false; renderMealPhotoDraft(); }
 }
@@ -1434,6 +1543,7 @@ function invalidateMealNutrition() {
   mealDraft.nutrition = null;
   renderMealNutrition();
   renderMealPhotoDraft();
+  queueMealDraftSave();
 }
 async function handleMealAnalysis() {
   if (!mealDraft || mealDraft.processing || mealDraft.analyzing || mealSaving) return;
@@ -1456,6 +1566,7 @@ async function handleMealAnalysis() {
     draft.nutrition = result.nutrition;
     if (!E.mealNameInput.value.trim() && result.name) E.mealNameInput.value = result.name;
     renderMealNutrition();
+    queueMealDraftSave();
   } catch (error) {
     if (draft !== mealDraft || version !== draft.nutritionVersion) return;
     E.mealNutritionStatus.textContent = error.name === "AbortError" ? "识别超时，请检查网络后重试；记录内容已保留。" : toFriendlyError(error);

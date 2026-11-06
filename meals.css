@@ -75,6 +75,10 @@ html.meal-editor-active { overflow: hidden; }
 #mealDialog #mealTimeInput { width: 116px; min-width: 0; min-height: 42px; margin: 0; padding: 7px 5px; border: 0; border-radius: 10px; background: var(--theme-subtle); color: var(--theme-text); font-family: inherit; font-size: 16px; text-align: center; }
 .diary-editor-footer { flex-shrink: 0; padding: 12px 22px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--theme-line); background: var(--theme-surface); }
 .diary-editor-footer p { margin: 0 0 9px; color: var(--theme-muted); text-align: center; font-size: 10px; }
+.diary-draft-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; margin-bottom: 7px; color: var(--theme-muted); font-size: 11px; line-height: 1.5; }
+.diary-draft-bar button { flex: 0 0 auto; min-height: 32px; padding: 5px 0 5px 8px; border: 0; background: transparent; color: var(--theme-accent); font-size: 11px; }
+.diary-draft-bar button:disabled { opacity: .4; }
+.diary-draft-bar button:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 3px; }
 #mealSaveButton { width: 100%; min-height: 48px; margin: 0; border: 0; border-radius: 14px; background: var(--theme-accent); color: var(--theme-on-accent); font-size: 15px; font-weight: 650; }
 #mealDialog button:disabled { opacity: .45; }
 #mealActionsDialog { width: min(440px, calc(100vw - 24px)); padding: 20px; border: 1px solid var(--theme-line); border-radius: 25px; background: var(--theme-surface); }
