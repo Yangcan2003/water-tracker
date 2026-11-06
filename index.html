@@ -8,7 +8,7 @@
     <title>每日健康追踪</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="revamp.css?v=4" />
-    <link rel="stylesheet" href="meta.css?v=21" />
+    <link rel="stylesheet" href="meta.css?v=22" />
     <link rel="stylesheet" href="history.css?v=2" />
     <link rel="stylesheet" href="themes.css?v=3" />
     <link rel="stylesheet" href="meals.css?v=10" />
@@ -54,18 +54,23 @@
       </header>
 
       <div class="record-date-bar" id="recordDateBar" role="group" aria-label="记录日期切换" hidden>
-        <button class="record-day-step" id="recordPreviousDay" type="button" aria-label="前一天" title="前一天">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
-        </button>
-        <label class="record-date-picker" title="选择记录日期">
-          <span class="record-date-heading" aria-hidden="true"><strong id="recordDateLabel">记录日期</strong><svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4" /></svg></span>
-          <span class="record-date-caption" id="recordDateCaption" aria-hidden="true"></span>
-          <input id="recordDateInput" type="date" required aria-label="选择记录日期" />
-        </label>
-        <button class="record-day-step" id="recordNextDay" type="button" aria-label="后一天" title="后一天">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6" /></svg>
-        </button>
-        <button class="record-today" id="recordToday" type="button" aria-label="回到今天">今天</button>
+        <div class="record-calendar-toolbar">
+          <label class="record-date-picker" title="选择记录日期">
+            <span id="recordDateLabel" aria-hidden="true">选择日期</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
+            <input id="recordDateInput" type="date" required aria-label="选择记录日期" />
+          </label>
+          <div class="record-calendar-actions">
+            <button class="record-today" id="recordToday" type="button">回到今天</button>
+            <button class="record-week-step" id="recordPreviousDay" type="button" aria-label="上一周" title="上一周">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
+            </button>
+            <button class="record-week-step" id="recordNextDay" type="button" aria-label="下一周" title="下一周">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="record-week-days" id="recordWeekDays" role="group" aria-label="选择本周日期"></div>
       </div>
 
       <!-- ========== 主栏目：首页概览 ========== -->
