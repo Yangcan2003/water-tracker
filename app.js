@@ -12,6 +12,7 @@ import { getFirebaseConfig, AVATAR_COLORS, DEFAULT_MEDICINES, DEFAULT_SUPPLEMENT
 import { toDateKey, fromDateKey, isWeekday, esc, toFriendlyError, toTimeValue, toTimeDisplay, getProgressMessage, genAvatarSVG, TOILET_SVG, t, setLang, getLang, playWaterSound, vibrate, playCompleteSound } from "./js/utils.js";
 import { storage } from "./js/storage.js";
 import { loadDaySnapshot } from "./js/day-loader.js";
+import { recordWeekView } from "./js/record-date.js";
 import { createBodyMeasurementsPage } from "./js/body-measurements-page.js";
 import { createNutritionGoalsPage } from "./js/nutrition-goals-page.js";
 import { createFoodCatalogPage } from "./js/food-catalog-page.js";
@@ -88,7 +89,7 @@ function $(sel) { return document.querySelector(sel); }
   "currentAmount","goalAmount","progressPercent","progressBar","progressMessage",
   "waterFill","waterWave","historyList","recordCount",
   "goalDialog","goalForm","goalInput",
-  "recordDateBar","recordDateInput","recordDateLabel","recordDateCaption","recordPreviousDay","recordNextDay","recordToday","dashboardNutritionRemaining",
+  "recordDateBar","recordDateInput","recordDateLabel","recordWeekDays","recordPreviousDay","recordNextDay","recordToday","dashboardNutritionRemaining",
   "recordTimeDialog","recordTimeForm","recordTimeInput","recordTimeSaveButton",
   "customButton","customDialog","customForm","customName","customAmount",
   "toast","toastText","undoButton",
@@ -301,8 +302,12 @@ E.recordDateInput.addEventListener("change", () => {
   renderRecordDate();
 });
 E.recordToday.addEventListener("click", () => changeRecordDate(toDateKey(new Date())));
-for (const [button, offset] of [[E.recordPreviousDay, -1], [E.recordNextDay, 1]]) button.addEventListener("click", () => {
-  const date = fromDateKey(selectedDate); date.setDate(date.getDate() + offset); changeRecordDate(toDateKey(date));
+for (const [button, direction] of [[E.recordPreviousDay, "previous"], [E.recordNextDay, "next"]]) button.addEventListener("click", () => {
+  changeRecordDate(recordWeekView(selectedDate, toDateKey(new Date()))[direction]);
+});
+E.recordWeekDays.addEventListener("click", event => {
+  const day = event.target.closest("[data-record-date]");
+  if (day && !day.disabled) changeRecordDate(day.dataset.recordDate);
 });
 document.querySelectorAll("[data-detail]").forEach(button => {
   button.addEventListener("click", () => openDetail(button.dataset.detail));
@@ -1210,17 +1215,16 @@ function ensureMealsToday() {
   lastCalendarDay = today;
 }
 function renderRecordDate() {
-  const today = toDateKey(new Date()), date = fromDateKey(selectedDate), isToday = selectedDate === today;
-  const label = date.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
-  const weekday = date.toLocaleDateString("zh-CN", { weekday: "short" });
+  const today = toDateKey(new Date()), week = recordWeekView(selectedDate, today);
+  const focusedDate = E.recordWeekDays.contains(document.activeElement) ? document.activeElement.dataset.recordDate : null;
   E.recordDateInput.max = today;
   E.recordDateInput.value = selectedDate;
-  E.recordDateInput.setAttribute("aria-label", `选择记录日期，当前为${date.getFullYear()}年${label}，${weekday}${isToday ? "，今天" : ""}`);
-  E.recordDateLabel.textContent = label;
-  E.recordDateCaption.textContent = `${date.getFullYear()}年 · ${weekday}`;
-  E.recordNextDay.disabled = selectedDate >= today;
-  E.recordToday.disabled = isToday;
-  E.recordToday.textContent = isToday ? "今天" : "回今天";
+  E.recordDateInput.setAttribute("aria-label", `选择记录日期，当前为${week.days.find(day => day.selected).label}`);
+  E.recordDateLabel.textContent = week.monthLabel;
+  E.recordNextDay.disabled = !week.canGoNext;
+  E.recordToday.disabled = selectedDate === today;
+  E.recordWeekDays.innerHTML = week.days.map(day => `<button class="record-week-day" type="button" data-record-date="${day.key}" aria-label="${day.label}" aria-pressed="${day.selected}"${day.today ? ' aria-current="date"' : ""}${day.future ? " disabled" : ""}><span class="record-weekday" aria-hidden="true">${day.today ? "今天" : day.weekday}</span><span class="record-day-number" aria-hidden="true">${day.number}</span></button>`).join("");
+  if (focusedDate) E.recordWeekDays.querySelector(`[data-record-date="${focusedDate}"]`)?.focus({ preventScroll: true });
 }
 function recordTimeForDate(dateKey) {
   const now = new Date(), date = fromDateKey(dateKey);
